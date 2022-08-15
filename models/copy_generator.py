@@ -9,7 +9,8 @@ class CopyGenerator(torch.nn.Module):
         """
         Args:
             input_dim: embedding dim
-            hidden_dims: dim-list of hidden layers (including output dimenstion but not embedding dim)
+            hidden_dims: dim-list of hidden layers (including output dimenstion but not embedding dim).
+                The output dimension should the number of ontology tokens.
             num_heads: number of attention heads. Default to to 12 as in BART
             dropout: float. Default to 0.3 as in Low-Resource Domain Adaptation for Compositional Task-Oriented Semantic Parsing
         """
@@ -29,22 +30,22 @@ class CopyGenerator(torch.nn.Module):
                 self.generator.append(torch.nn.Dropout(dropout))
             input_dim = hidden_dim
 
-    def forward(self, encoder_outputs: Tensor, decoder_outputs: Tensor) -> Tensor:
+    def forward(self, encoder_hidden_states: Tensor, decoder_hidden_states: Tensor) -> Tensor:
         """
         Args:
-            encoder_outputs: [batch_size, source_seq_len, embed_size]
-            decoder_outputs: [batch_size, 1, embed_size]
+            encoder_hidden_states: [batch_size, source_seq_len, embed_size]
+            decoder_hidden_states: [batch_size, 1, embed_size]
 
         Returns:
-            [batch_size, ontology_vocab_size + source_seq_len]
+            [batch_size, ontology_vocab_size + max_seq_len]
         """
 
         # Get probs to generate ontology
-        ontology_probs = self.generator(decoder_outputs)
+        ontology_probs = self.generator(decoder_hidden_states)
         ontology_probs = F.softmax(ontology_probs)
 
         # Get attention weights and context over source sequence
-        from_source_probs, context_outputs = self.copier(encoder_outputs, decoder_outputs)
+        from_source_probs, context_outputs = self.copier(encoder_hidden_states, decoder_hidden_states)
 
         # Get copy probs
         copy_probs = F.sigmoid(context_outputs)
@@ -53,4 +54,4 @@ class CopyGenerator(torch.nn.Module):
         from_source_probs *= copy_probs
         ontology_probs *= (1 - copy_probs)
 
-        return torch.stack([ontology_probs, from_source_probs], dim=-1)
+        return torch.stack([ontology_probs, from_source_probs], dim=-1) # [batch_size, ontology_vocab_size + max_seq_len]
