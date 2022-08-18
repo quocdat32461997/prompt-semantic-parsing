@@ -30,7 +30,7 @@ class CopyGenerator(torch.nn.Module):
                 self.generator.append(torch.nn.Dropout(dropout))
             input_dim = hidden_dim
 
-    def forward(self, encoder_hidden_states: Tensor, decoder_hidden_states: Tensor) -> Tensor:
+    def forward(self, encoder_hidden_states: Tensor, encoder_attn_mask: Tensor, decoder_hidden_states: Tensor) -> Tensor:
         """
         Args:
             encoder_hidden_states: [batch_size, source_seq_len, embed_size]
@@ -45,7 +45,8 @@ class CopyGenerator(torch.nn.Module):
         ontology_probs = F.softmax(ontology_probs)
 
         # Get attention weights and context over source sequence
-        from_source_probs, context_outputs = self.copier(encoder_hidden_states, decoder_hidden_states)
+        context_outputs, from_source_probs = self.copier(query=encoder_hidden_states, key=decoder_hidden_states,
+                                                         attention_mask=encoder_attn_mask, need_weights=True)
 
         # Get copy probs
         copy_probs = F.sigmoid(context_outputs)
@@ -54,4 +55,5 @@ class CopyGenerator(torch.nn.Module):
         from_source_probs *= copy_probs
         ontology_probs *= (1 - copy_probs)
 
-        return torch.stack([ontology_probs, from_source_probs], dim=-1) # [batch_size, ontology_vocab_size + max_seq_len]
+        # [batch_size, ontology_vocab_size + max_seq_len]
+        return torch.stack([ontology_probs, from_source_probs], dim=-1)

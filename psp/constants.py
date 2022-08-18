@@ -1,31 +1,38 @@
-from typing import NamedTuple, Optional, Dict, List, Union
+from typing import NamedTuple, Optional, Union
+from enum import Enum
 from torch import Tensor
 
 
-class Datasets:
-    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt_top/psp/dataset/TOPv2_Dataset"
+class RunMode(Enum):
+    TRAIN: str = 'train'
+    EVAL: str = 'eval'
+    TEST: str = 'test'
 
 
-class OntologyVocabs:
-    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt_top/psp/dataset/topv2_ontology_vocabs.pkl"
+class Datasets(Enum):
+    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/psp/dataset/TOPv2_Dataset"
 
 
-# TOPv2 dataset
-TOPv2_DOMAIN_MAP: Dict[str, int] = {
-    'alarm': 0,
-    'event': 1,
-    'messaging': 2,
-    'music': 3,
-    'navigation': 4,
-    'reminder': 5,
-    'weather': 6,
-    'timer': 7,
-}
+class OntologyVocabs(Enum):
+    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/psp/dataset/topv2_ontology_vocabs.pkl"
+
+
+class TOPv2Domain(Enum):
+    alarm: int = 0
+    event: int = 1
+    messaging: int = 2
+    music: int = 3
+    navigation: int = 4
+    reminder: int = 5
+    weather: int = 6
+    timer: int = 7
+
 
 class ListInputs(NamedTuple):
     domain: int
     utterance: str
     semantic_parse: str
+
 
 class ParseInputs(NamedTuple):
     domain: Union[int, Tensor]

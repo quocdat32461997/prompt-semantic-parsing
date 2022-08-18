@@ -3,7 +3,7 @@ import unittest
 from typing import List
 from transformers import BartTokenizer
 
-from psp.constants import PRETRAINED_BART_MODEL, Datasets
+from psp.constants import PRETRAINED_BART_MODEL, Datasets, RunMode
 from psp.models import CopyGenerator, Seq2SeqCopyPointer
 from psp.dataset import LowResourceTOpv2Dataset, Tokenizer, PromptTOPv2Dataset, DataLoader
 
@@ -74,7 +74,7 @@ class TestDataLoader(unittest.TestCase):
 
         # Init TOPv2-oriented dataloader
         data_loader = DataLoader(tokenizer=tokenizer, dataset_name=Datasets.TOPv2,
-                                 dataset=LowResourceTOpv2Dataset(bucket='train'),
+                                 dataset=LowResourceTOpv2Dataset(bucket=RunMode.TRAIN),
                                  batch_size=self.batch_size)
 
         for batch in data_loader:

@@ -40,7 +40,7 @@ class Seq2SeqCopyPointer(torch.nn.Module):
             decoder_hidden_states = decoder_hidden_states[:, -1:] # Get hidden_states of the last token
 
             # Copy or generate
-            copy_probs = self.copy_generator(encoder_hidden_states, decoder_hidden_states)
+            copy_probs = self.copy_generator(encoder_hidden_states, decoder_hidden_states, mode='train')
 
             outputs.append(copy_probs)
         return torch.stach(outputs, dim=1)
