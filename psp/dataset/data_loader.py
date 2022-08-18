@@ -2,7 +2,7 @@ import os
 import pickle
 from typing import List, Dict, Union
 import pandas as pd
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from transformers import BartTokenizer
 from psp.constants import OntologyVocabs, TOPv2_DOMAIN_MAP, ParseInputs, Datasets
 from psp.dataset.data_utils import read_and_merge
@@ -45,6 +45,22 @@ class Tokenizer:
         return self.tokenizer(inputs, **kwargs)
 
     @property
+    def max_seq_len(self) -> int:
+        return self.tokenizer.model_max_length
+
+    @property
+    def bos_token_id(self) -> int:
+        return self.tokenizer.bos_token_id
+
+    @property
+    def eos_token_id(self) -> int:
+        return self.tokenizer.eos_token_id
+
+    @property
+    def pad_token_id(self) -> int:
+        return self.tokenizer.pad_token_id
+
+    @property
     def vocab(self) -> Dict[str, int]:
         return self.tokenizer.get_vocab()
 
@@ -66,14 +82,18 @@ class Tokenizer:
 
 
 class TOPv2Dataset(Dataset):
-    def __init__(self, tokenizer: Tokenizer) -> None:
+    BUCKET_DICT: Dict[str, str] = {
+        'train': '_train.tsv',
+        'eval': '_eval.tsv',
+        'test': '_test.tsv',
+    }
+
+    def __init__(self, tokenizer: Tokenizer, bucket: str) -> None:
         super().__init__()
 
         # Read data
-        buckets: List[str] = ['_train.tsv', '_eval.tsv', '_test.tsv']
         self.data: pd.DataFrame = read_and_merge(
-            [os.path.join(Datasets.TOPv2, domain, bucket)
-                for bucket in buckets for domain in TOPv2_DOMAIN_MAP.keys()])
+            [os.path.join(Datasets.TOPv2, domain + TOPv2Dataset.BUCKET_DICT[bucket]) for domain in TOPv2_DOMAIN_MAP.keys()])
 
         # Init tokenizer
         self.tokenizer: Tokenizer = tokenizer
@@ -84,20 +104,21 @@ class TOPv2Dataset(Dataset):
 
 class LowResourceTOpv2Dataset(TOPv2Dataset):
     def __getitem__(self, idx) -> ParseInputs:
-        sample = self.data[idx]
+        sample = self.data.iloc[idx]
 
         # Encode domain
         domain = TOPv2_DOMAIN_MAP[sample['domain']]
 
         # Tokenize utterance
-        tokenized_utterance = self.tokenizer(sample['utterance'], padding='max_length', truncation=True)
+        tokenized_utterance = self.tokenizer(
+            sample['utterance'], padding='max_length', truncation=True, return_tensors='pt')
 
         # Tokenize semantic_parse
         tokenized_semantic_parse: List[int] = self.tokenizer(
-            sample['semantic_parse'], padding='max_length', truncation=True)
+            sample['semantic_parse'], padding='max_length', truncation=True, return_tensors='pt')
 
         return ParseInputs(domain=domain,
-                           token_ids=tokenized_utterance['input_ids'],
+                           input_ids=tokenized_utterance['input_ids'],
                            attn_mask=tokenized_utterance['attention_mask'],
                            semantic_parse=tokenized_semantic_parse['input_ids'],
                            semantic_parse_attn_mask=tokenized_semantic_parse['attention_mask'])
