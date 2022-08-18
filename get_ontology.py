@@ -49,7 +49,7 @@ def get_ontology_from_topv2_dataset():
     }
 
     # Save vocabs
-    with open(OntologyVocabs.TOPv2, 'wb') as file:
+    with open(OntologyVocabs.TOPv2.value, 'wb') as file:
         pickle.dump(vocabs, file)
 
 

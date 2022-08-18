@@ -6,7 +6,7 @@ import pandas as pd
 from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from transformers import BartTokenizer
-from psp.constants import ListInputs, OntologyVocabs, TOPv2_DOMAIN_MAP, ParseInputs, Datasets, ListInputs
+from psp.constants import ListInputs, OntologyVocabs, TOPv2Domain, ParseInputs, Datasets, ListInputs, RunMode
 from psp.dataset.data_utils import read_and_merge
 
 
@@ -28,7 +28,7 @@ class Tokenizer:
         """Read TOPv2 ontology vocabs and add to tokenizer."""
 
         # Read ontology vocab
-        with open(OntologyVocabs.TOPv2, 'rb') as file:
+        with open(OntologyVocabs.TOPv2.value, 'rb') as file:
             self.ontology_per_domain_map: Dict[str, Dict[str, List[str]]] = pickle.load(file)
 
         # Get lists of intents and slots
@@ -93,12 +93,13 @@ class TOPv2Dataset(Dataset):
         'test': '_test.tsv',
     }
 
-    def __init__(self, bucket: str) -> None:
+    def __init__(self, bucket: RunMode) -> None:
         super().__init__()
 
         # Read data
         self.data: pd.DataFrame = read_and_merge(
-            [os.path.join(Datasets.TOPv2, domain + TOPv2Dataset.BUCKET_DICT[bucket]) for domain in TOPv2_DOMAIN_MAP.keys()])
+            [os.path.join(Datasets.TOPv2.value, domain.name + TOPv2Dataset.BUCKET_DICT[bucket.value])
+                for domain in TOPv2Domain])
 
     def __len__(self) -> int:
         return len(self.data)
@@ -109,7 +110,7 @@ class LowResourceTOpv2Dataset(TOPv2Dataset):
         sample = self.data.iloc[idx]
 
         # Encode domain
-        domain = TOPv2_DOMAIN_MAP[sample['domain']]
+        domain = TOPv2Domain[sample['domain']]
 
         return ListInputs(domain=domain, utterance=sample['utterance'], semantic_parse=sample['semantic_parse'])
 
@@ -120,7 +121,7 @@ class PromptTOPv2Dataset(TOPv2Dataset):
 
 
 class DataLoader(DataLoader):
-    def __init__(self, tokenizer: Tokenizer, dataset_name: str, **kwargs):
+    def __init__(self, tokenizer: Tokenizer, dataset_name: Datasets, **kwargs):
         # Get collate_fn
         collate_fn = None
         if dataset_name == Datasets.TOPv2:
