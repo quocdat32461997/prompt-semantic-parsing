@@ -110,7 +110,7 @@ class LowResourceTOpv2Dataset(TOPv2Dataset):
         sample = self.data.iloc[idx]
 
         # Encode domain
-        domain = TOPv2Domain[sample['domain']]
+        domain: int = TOPv2Domain[sample['domain']].value
 
         return ListInputs(domain=domain, utterance=sample['utterance'], semantic_parse=sample['semantic_parse'])
 
