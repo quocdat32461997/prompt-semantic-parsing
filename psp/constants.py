@@ -10,11 +10,11 @@ class RunMode(Enum):
 
 
 class Datasets(Enum):
-    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/dataset/TOPv2_Dataset"
+    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/datasets/TOPv2_Dataset"
 
 
 class OntologyVocabs(Enum):
-    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/dataset/topv2_ontology_vocabs.pkl"
+    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/datasets/topv2_ontology_vocabs.pkl"
 
 
 class TOPv2Domain(Enum):
