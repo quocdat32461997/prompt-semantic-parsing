@@ -22,6 +22,10 @@ TOPv2_DOMAIN_MAP: Dict[str, int] = {
     'timer': 7,
 }
 
+class ListInputs(NamedTuple):
+    domain: int
+    utterance: str
+    semantic_parse: str
 
 class ParseInputs(NamedTuple):
     domain: Union[int, Tensor]
