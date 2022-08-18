@@ -128,3 +128,11 @@ dmypy.json
 # Pyre type checker
 .pyre/
 .DS_Store
+
+# Dataset
+.psp/dataset/*.zip
+.psp/dataset/TOPv2_Dataset/*
+.psp/dataset/top-dataset-semantic-parsing/*
+.psp/dataset/top-dataset-semantic-parsing
+
+.torchtools
