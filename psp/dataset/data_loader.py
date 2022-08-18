@@ -1,10 +1,12 @@
 import os
 import pickle
+import torch
 from typing import List, Dict, Union
 import pandas as pd
+from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from transformers import BartTokenizer
-from psp.constants import OntologyVocabs, TOPv2_DOMAIN_MAP, ParseInputs, Datasets
+from psp.constants import ListInputs, OntologyVocabs, TOPv2_DOMAIN_MAP, ParseInputs, Datasets, ListInputs
 from psp.dataset.data_utils import read_and_merge
 
 
@@ -18,6 +20,9 @@ class Tokenizer:
             self._read_topv2_ontology_vocabs()
         else:
             raise ValueError("{} is an unsupported dataset.".format(dataset))
+
+    def batch_encode_plus(self, batch_text: List[str], **kwargs):
+        return self.tokenizer.batch_encode_plus(batch_text, **kwargs)
 
     def _read_topv2_ontology_vocabs(self):
         """Read TOPv2 ontology vocabs and add to tokenizer."""
@@ -88,15 +93,12 @@ class TOPv2Dataset(Dataset):
         'test': '_test.tsv',
     }
 
-    def __init__(self, tokenizer: Tokenizer, bucket: str) -> None:
+    def __init__(self, bucket: str) -> None:
         super().__init__()
 
         # Read data
         self.data: pd.DataFrame = read_and_merge(
             [os.path.join(Datasets.TOPv2, domain + TOPv2Dataset.BUCKET_DICT[bucket]) for domain in TOPv2_DOMAIN_MAP.keys()])
-
-        # Init tokenizer
-        self.tokenizer: Tokenizer = tokenizer
 
     def __len__(self) -> int:
         return len(self.data)
@@ -109,21 +111,50 @@ class LowResourceTOpv2Dataset(TOPv2Dataset):
         # Encode domain
         domain = TOPv2_DOMAIN_MAP[sample['domain']]
 
-        # Tokenize utterance
-        tokenized_utterance = self.tokenizer(
-            sample['utterance'], padding='max_length', truncation=True, return_tensors='pt')
-
-        # Tokenize semantic_parse
-        tokenized_semantic_parse: List[int] = self.tokenizer(
-            sample['semantic_parse'], padding='max_length', truncation=True, return_tensors='pt')
-
-        return ParseInputs(domain=domain,
-                           input_ids=tokenized_utterance['input_ids'],
-                           attn_mask=tokenized_utterance['attention_mask'],
-                           semantic_parse=tokenized_semantic_parse['input_ids'],
-                           semantic_parse_attn_mask=tokenized_semantic_parse['attention_mask'])
+        return ListInputs(domain=domain, utterance=sample['utterance'], semantic_parse=sample['semantic_parse'])
 
 
 class PromptTOPv2Dataset(TOPv2Dataset):
     def __getitem__(self, idx) -> ParseInputs:
         return None
+
+
+class DataLoader(DataLoader):
+    def __init__(self, tokenizer: Tokenizer, dataset_name: str, **kwargs):
+        # Get collate_fn
+        collate_fn = None
+        if dataset_name == Datasets.TOPv2:
+            collate_fn = self.collate_topv2_parse_inputs
+
+        super().__init__(collate_fn=collate_fn, **kwargs)
+
+        self.tokenizer: Tokenizer = tokenizer
+
+    def collate_topv2_parse_inputs(self, batch: List[ListInputs]) -> ParseInputs:
+        """Custom collate function to batch ParseInputs"""
+        domain_list: List[int] = []
+        utterance_list: List[str] = []
+        semantic_parse_list: List[str] = []
+
+        # Get inptus
+        for inputs in batch:
+            domain_list.append(inputs.domain)
+            utterance_list.append(inputs.utterance)
+            semantic_parse_list.append(inputs.semantic_parse)
+
+        domain_tensor: Tensor = torch.tensor(domain_list)
+
+        # Tokenize utterance and semantic_parse
+        tokenized_utterance = self.tokenizer.batch_encode_plus(utterance_list, truncation=True,
+                                                               add_special_tokens=True, max_length=self.tokenizer.max_seq_len,
+                                                               padding='max_length', return_tensors='pt')
+        tokenized_semantic_parse = self.tokenizer.batch_encode_plus(semantic_parse_list, truncation=True,
+                                                                    add_special_tokens=True, max_length=self.tokenizer.max_seq_len,
+                                                                    padding='max_length', return_tensors='pt')
+
+        # Convert to Tensor and parse back into ParseInputs
+        return ParseInputs(domain=domain_tensor,
+                           input_ids=tokenized_utterance['input_ids'],
+                           attn_mask=tokenized_utterance['attention_mask'],
+                           semantic_parse=tokenized_semantic_parse['input_ids'],
+                           semantic_parse_attn_mask=tokenized_semantic_parse['attention_mask'])
