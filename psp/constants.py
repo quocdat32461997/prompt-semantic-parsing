@@ -5,8 +5,10 @@ from torch import Tensor
 class Datasets:
     TOPv2: str = "/Users/datqngo/Desktop/projects/prompt_top/psp/dataset/TOPv2_Dataset"
 
+
 class OntologyVocabs:
     TOPv2: str = "/Users/datqngo/Desktop/projects/prompt_top/psp/dataset/topv2_ontology_vocabs.pkl"
+
 
 # TOPv2 dataset
 TOPv2_DOMAIN_MAP: Dict[str, int] = {
@@ -23,10 +25,10 @@ TOPv2_DOMAIN_MAP: Dict[str, int] = {
 
 class ParseInputs(NamedTuple):
     domain: Union[int, Tensor]
-    token_ids: Union[List[int], Tensor]
-    attn_mask: Union[List[int], Tensor]
-    semantic_parse: Union[List[int], Tensor]
-    semantic_parse_attn_mask: Union[List[int], Tensor]
+    input_ids: Tensor
+    attn_mask: Tensor
+    semantic_parse: Tensor
+    semantic_parse_attn_mask: Tensor
 
 
 class TensorInputs(NamedTuple):

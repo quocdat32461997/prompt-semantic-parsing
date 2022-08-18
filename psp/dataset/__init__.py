@@ -1,2 +1,2 @@
-from .data_loader import LowResourceTOpv2Dataset, Tokenizer, PromptTOPv2Dataset
+from .data_loader import Tokenizer, LowResourceTOpv2Dataset, PromptTOPv2Dataset
 from .data_utils import *

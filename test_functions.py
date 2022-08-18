@@ -1,10 +1,12 @@
 from lib2to3.pgen2 import token
 import unittest
 from typing import List
+from transformers import BartTokenizer
+from torch.utils.data import DataLoader
+
 from psp.constants import PRETRAINED_BART_MODEL, Datasets
 from psp.models import CopyGenerator, Seq2SeqCopyPointer
 from psp.dataset import LowResourceTOpv2Dataset, Tokenizer, PromptTOPv2Dataset
-from transformers import BartTokenizer
 
 UTTERANCE: str = "Set alarm every minute for next hour"
 TOKEN_IDS: List[int] = [0, 28512, 8054, 358, 2289, 13, 220, 1946, 2]
@@ -55,10 +57,30 @@ class TestTokenizer(unittest.TestCase):
         # Original vocab size
         initial_vocab_size = len(tokenizer)
         new_vocab_size = topv2_tokenizer.vocab_size
-        
+
         self.assertEqual(new_vocab_size - initial_vocab_size, topv2_tokenizer.ontology_vocab_size)
 
 # Test datasets and dataloaders
+
+
+class TestDataLoader(unittest.TestCase):
+    def setUp(self) -> None:
+        self.batch_size = 3
+
+    def test_topv2_dataloader(self) -> None:
+        """Test TOPv2-related datasets and dataloaders"""
+
+        # Init tokenizer
+        tokenizer = Tokenizer(pretrained=PRETRAINED_BART_MODEL, dataset=Datasets.TOPv2)
+
+        # Init TOPv2-oriented dataloader
+        data_loader = DataLoader(dataset=LowResourceTOpv2Dataset(tokenizer=tokenizer, bucket='train'),
+                                 batch_size=self.batch_size)
+
+        for batch in data_loader:
+            self.assertEqual(len(batch.domain), self.batch_size)
+            self.assertEqual(list(batch.input_ids.shape), [self.batch_size, 1, tokenizer.max_seq_len])
+            break
 
 
 if __name__ == '__main__':
