@@ -42,13 +42,10 @@ class ParseInputs(NamedTuple):
     semantic_parse_attn_mask: Tensor
 
 
-class TensorInputs(NamedTuple):
-    input_ids: Tensor
-    attn_mask: Tensor
-    inputs_embeds: Tensor
-    semantic_parse_ids: Optional[Tensor]
-    semantic_parse_attn_mask: Optional[Tensor]
-    semantic_parse_embeds: Optional[Tensor]
+class ParaseOutputs(NamedTuple):
+    ontology_probs: Tensor
+    copy_source_probs: Tensor
+    copy_probs: Tensor
 
 
 PRETRAINED_BART_MODEL: str = 'facebook/bart-base'
