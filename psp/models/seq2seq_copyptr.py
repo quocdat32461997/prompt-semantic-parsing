@@ -1,14 +1,15 @@
 import torch
 from torch import Tensor
 from transformers import BartModel
+from typing import List
 
 from psp.models.copy_generator import CopyGenerator
-from psp.constants import TensorInputs
+from psp.constants import ParseInputs, ParseOutputs
 
 
 class Seq2SeqCopyPointer(torch.nn.Module):
     def __init__(self, pretrained: str, ontology_vocab_size: int,
-            bos_token_id: int, eos_token_id: int, pad_token_id):
+                 bos_token_id: int, eos_token_id: int, pad_token_id):
         super().__init__()
         bart_model = BartModel.from_pretrained(pretrained)
 
@@ -22,30 +23,32 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         self.decoder = bart_model.decoder
 
         self.copy_generator = CopyGenerator(input_dim=bart_model.config.d_model,
-            hidden_dim_list=[512, 512, ontology_vocab_size])
+                                            hidden_dim_list=[512, 512, ontology_vocab_size])
 
-    def forward(self, batch: TensorInputs):
+    def forward(self, batch: ParseInputs) -> ParseOutputs:
         """Supports token_ids only."""
         # Encode inputs
         encoder_hidden_states = self.encoder(input_ids=batch.input_ids,
-                                             attention_mask=batch.attn_mask).last_hidden_state
+                                             attention_mask=batch.attn_mask).last_hidden_state  # [batch_size, max_seq_len, embed_dim]
 
-        outputs = []
+        decoder_hidden_states_list: List[Tensor] = []
         # Decode
         for step in range(1, self.max_seq_len - 1):
             decoder_hidden_states = self.decoder(input_ids=batch.semantic_parse_ids[:, :step],
                                                  atteention_mask=batch.semantic_parse_attn_mask[:, :step],
                                                  encoder_hidden_states=encoder_hidden_states,
                                                  encoder_attention_mask=batch.attn_mask).last_hidden_state
-            decoder_hidden_states = decoder_hidden_states[:, -1:] # Get hidden_states of the last token
+            # Get hidden_states of the last token
+            decoder_hidden_states_list.append(decoder_hidden_states[:, -1:])
 
-            # Copy or generate
-            copy_probs = self.copy_generator(encoder_hidden_states, decoder_hidden_states, mode='train')
+        decoder_hidden_states: Tensor = torch.stack(decoder_hidden_states_list, dim=1)
 
-            outputs.append(copy_probs)
-        return torch.stach(outputs, dim=1)
+        # Get probs to copy or generate
+        parse_outputs: ParseOutputs = self.copy_generator(encoder_hidden_states, decoder_hidden_states)
 
-    def predict(self, batch: TensorInputs) -> Tensor:
+        return parse_outputs
+
+    def predict(self, batch: ParseInputs) -> Tensor:
         # Encode
         encoder_hidden_states = self.encoder(input_ids=batch.input_ids,
                                              attention_mask=batch.attn_mask).last_hidden_state
@@ -69,11 +72,16 @@ class Seq2SeqCopyPointer(torch.nn.Module):
                 input_ids=past_outputs,
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=batch.attn_mask.index_select(0, indices)).last_hidden_state
-            decoder_hidden_states = decoder_hidden_states[:, -1:]   # Get hidden_states of the last token
+            # Get hidden_states of the last token
+            decoder_hidden_states = decoder_hidden_states[:, -1:]
 
-            # Copy or generate
+            # Copy from source tokens or generate ontology tokens
             # [batch_size, ontology_vocab_size + max_seq_len]
-            outputs: Tensor = self.copy_generator(encoder_hidden_states.index_select(0, indices), decoder_hidden_states)
+            outputs: Tensor = self.copy_generator.generate_parse(
+                encoder_hidden_states=encoder_hidden_states.index_select(0, indices),
+                encoder_attn_mask=batch.attn_mask.index_select(0, indices),
+                decoder_hidden_states=decoder_hidden_states,
+                source_input_ids=batch.input_ids.index_select(0, indices))
 
             # Update outputs
             outputs[indices] = torch.cat([past_outputs, outputs])

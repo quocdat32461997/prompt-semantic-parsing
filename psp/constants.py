@@ -42,7 +42,7 @@ class ParseInputs(NamedTuple):
     semantic_parse_attn_mask: Tensor
 
 
-class ParaseOutputs(NamedTuple):
+class ParseOutputs(NamedTuple):
     ontology_probs: Tensor
     copy_source_probs: Tensor
     copy_probs: Tensor
