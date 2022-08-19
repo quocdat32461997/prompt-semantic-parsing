@@ -3,7 +3,7 @@ import pickle
 from collections import defaultdict
 from typing import Dict, List, Union
 import pandas as pd
-from psp.constants import ONTOLOGY_SCOPE_PATTERN, ONTOLOGY_PATTERN, OntologyVocabs, TOPv2_DOMAIN_MAP, Datasets
+from psp.constants import ONTOLOGY_PATTERN, OntologyVocabs, Datasets
 import re
 
 
@@ -26,11 +26,11 @@ def get_ontology_from_topv2_dataset():
     slots_per_domain: Dict[str, List[str]] = defaultdict(list)
 
     for domain, path in data_path_per_domain.items():
-        df = pd.read_csv(os.path.join(Datasets.TOPv2, path), sep='\t')
+        df = pd.read_csv(os.path.join(Datasets.TOPv2.value, path), sep='\t')
 
         # Find ontology vocabs and their scopes
         ontology_vocabs = df['semantic_parse'].map(find_ontology).explode().unique()
-        
+
         # Map to intents and slots
         for vocab in ontology_vocabs:
             if vocab.startswith('IN:'):
