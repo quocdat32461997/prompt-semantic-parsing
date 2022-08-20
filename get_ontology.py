@@ -3,13 +3,13 @@ import pickle
 from collections import defaultdict
 from typing import Dict, List, Union
 import pandas as pd
-from psp.constants import ONTOLOGY_PATTERN, OntologyVocabs, Datasets
+from psp.constants import ONTOLOGY_SCOPE_PATTERN, OntologyVocabs, Datasets
 import re
 
 
 def get_ontology_from_topv2_dataset():
     # Lambda function to find all ontologies
-    def find_ontology(row): return re.findall(ONTOLOGY_PATTERN, row)
+    def find_ontology(row): return re.findall(ONTOLOGY_SCOPE_PATTERN, row)
 
     data_path_per_domain: Dict[str, str] = {
         'alarm': 'alarm_train.tsv',
@@ -33,10 +33,12 @@ def get_ontology_from_topv2_dataset():
 
         # Map to intents and slots
         for vocab in ontology_vocabs:
-            if vocab.startswith('IN:'):
+            if vocab.startswith('[IN:'):
                 intents_per_domain[domain].append(vocab)
-            elif vocab.startswith('SL:'):
+            elif vocab.startswith('[SL:'):
                 slots_per_domain[domain].append(vocab)
+            elif vocab == ']':
+                intents_per_domain[domain].append(vocab)
             else:
                 raise ValueError("{} is not a valid ontology.".format(vocab))
 
