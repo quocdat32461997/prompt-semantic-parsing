@@ -3,12 +3,13 @@ from torch import Tensor
 from transformers import BartModel
 from typing import List
 
-from psp.models.copy_generator import CopyGenerator
-from psp.constants import ParseInputs, ParseOutputs
+from psp.models.pointer_generator import PointerGenerator
+from psp.constants import ParseInputs, RunMode
+from psp.models.searcher import BeamSearch
 
 
 class Seq2SeqCopyPointer(torch.nn.Module):
-    def __init__(self, pretrained: str, ontology_vocab_size: int,
+    def __init__(self, pretrained: str, vocab_size: int, ontology_vocab_ids: List[int],
                  bos_token_id: int, eos_token_id: int, pad_token_id):
         super().__init__()
         bart_model = BartModel.from_pretrained(pretrained)
@@ -22,10 +23,13 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         self.encoder = bart_model.encoder
         self.decoder = bart_model.decoder
 
-        self.copy_generator = CopyGenerator(input_dim=bart_model.config.d_model,
-                                            hidden_dim_list=[512, 512, ontology_vocab_size])
+        self.pointer_generator = PointerGenerator(vocab_size=vocab_size, ontology_vocab_ids=ontology_vocab_ids,
+                                                  input_dim=bart_model.config.d_model,
+                                                  hidden_dim_list=[512, 512, len(ontology_vocab_ids)])
 
-    def forward(self, batch: ParseInputs) -> ParseOutputs:
+        self.searcher: BeamSearch = BeamSearch()
+
+    def forward(self, batch: ParseInputs) -> Tensor:
         """Supports token_ids only."""
         # Encode inputs
         encoder_hidden_states = self.encoder(input_ids=batch.input_ids,
@@ -44,9 +48,10 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         decoder_hidden_states: Tensor = torch.stack(decoder_hidden_states_list, dim=1)
 
         # Get probs to copy or generate
-        parse_outputs: ParseOutputs = self.copy_generator(encoder_hidden_states, decoder_hidden_states)
+        vocab_probs: Tensor = self.pointer_generator(batch.input_ids.clone(), encoder_hidden_states,
+                                                     decoder_hidden_states, RunMode.TRAIN)
 
-        return parse_outputs
+        return vocab_probs
 
     def predict(self, batch: ParseInputs) -> Tensor:
         # Encode
@@ -75,13 +80,17 @@ class Seq2SeqCopyPointer(torch.nn.Module):
             # Get hidden_states of the last token
             decoder_hidden_states = decoder_hidden_states[:, -1:]
 
-            # Copy from source tokens or generate ontology tokens
-            # [batch_size, ontology_vocab_size + max_seq_len]
-            outputs: Tensor = self.copy_generator.generate_parse(
+            # Generate probs to copy from source tokens or generate ontology tokens
+            # [batch_size, 1, vocab_size]
+            vocab_probs: Tensor = self.pointer_generator(
+                source_input_ids=batch.input_ids.index_select(0, indices).clone(),
                 encoder_hidden_states=encoder_hidden_states.index_select(0, indices),
                 encoder_attn_mask=batch.attn_mask.index_select(0, indices),
                 decoder_hidden_states=decoder_hidden_states,
-                source_input_ids=batch.input_ids.index_select(0, indices))
+                run_mode=RunMode.TEST)
+
+            # beam-search
+            outputs = self.searcher(outputs, past_outputs)
 
             # Update outputs
             outputs[indices] = torch.cat([past_outputs, outputs])

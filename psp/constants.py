@@ -42,13 +42,7 @@ class ParseInputs(NamedTuple):
     semantic_parse_attn_mask: Tensor
 
 
-class ParseOutputs(NamedTuple):
-    ontology_probs: Tensor
-    copy_source_probs: Tensor
-    copy_probs: Tensor
-
-
 PRETRAINED_BART_MODEL: str = 'facebook/bart-base'
 
-ONTOLOGY_SCOPE_PATTERN: str = "\[|IN:\w+|SL:\w+|\]"
-ONTOLOGY_PATTERN: str = "IN:\w+|SL:\w+"
+ONTOLOGY_SCOPE_PATTERN: str = "\[IN:\w+|\[SL:\w+|\]"
+ONTOLOGY_PATTERN: str = "\[IN:\w+|\[SL:\w+"
