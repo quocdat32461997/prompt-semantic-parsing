@@ -5,12 +5,19 @@ from typing import List
 
 from psp.models.pointer_generator import PointerGenerator
 from psp.constants import ParseInputs, RunMode
-from psp.models.searcher import BeamSearch
+from psp.models.decoding_utils import BeamSearch
 
 
 class Seq2SeqCopyPointer(torch.nn.Module):
-    def __init__(self, pretrained: str, vocab_size: int, ontology_vocab_ids: List[int],
-                 bos_token_id: int, eos_token_id: int, pad_token_id):
+    def __init__(
+        self,
+        pretrained: str,
+        vocab_size: int,
+        ontology_vocab_ids: List[int],
+        bos_token_id: int,
+        eos_token_id: int,
+        pad_token_id: int,
+    ):
         super().__init__()
         bart_model = BartModel.from_pretrained(pretrained)
 
@@ -23,50 +30,65 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         self.encoder = bart_model.encoder
         self.decoder = bart_model.decoder
 
-        self.pointer_generator = PointerGenerator(vocab_size=vocab_size, ontology_vocab_ids=ontology_vocab_ids,
-                                                  input_dim=bart_model.config.d_model,
-                                                  hidden_dim_list=[512, 512, len(ontology_vocab_ids)])
+        self.pointer_generator = PointerGenerator(
+            vocab_size=vocab_size,
+            ontology_vocab_ids=ontology_vocab_ids,
+            input_dim=bart_model.config.d_model,
+            hidden_dim_list=[512, 512, len(ontology_vocab_ids)],
+        )
 
         self.searcher: BeamSearch = BeamSearch()
 
     def forward(self, batch: ParseInputs) -> Tensor:
         """Supports token_ids only."""
         # Encode inputs
-        encoder_hidden_states = self.encoder(input_ids=batch.input_ids,
-                                             attention_mask=batch.attn_mask).last_hidden_state  # [batch_size, max_seq_len, embed_dim]
+        encoder_hidden_states = self.encoder(
+            input_ids=batch.input_ids, attention_mask=batch.attn_mask
+        ).last_hidden_state  # [batch_size, max_seq_len, embed_dim]
 
         decoder_hidden_states_list: List[Tensor] = []
         # Decode
         for step in range(1, self.max_seq_len - 1):
-            decoder_hidden_states = self.decoder(input_ids=batch.semantic_parse_ids[:, :step],
-                                                 atteention_mask=batch.semantic_parse_attn_mask[:, :step],
-                                                 encoder_hidden_states=encoder_hidden_states,
-                                                 encoder_attention_mask=batch.attn_mask).last_hidden_state
+            decoder_hidden_states = self.decoder(
+                input_ids=batch.semantic_parse_ids[:, :step],
+                atteention_mask=batch.semantic_parse_attn_mask[:, :step],
+                encoder_hidden_states=encoder_hidden_states,
+                encoder_attention_mask=batch.attn_mask,
+            ).last_hidden_state
             # Get hidden_states of the last token
             decoder_hidden_states_list.append(decoder_hidden_states[:, -1:])
 
         decoder_hidden_states: Tensor = torch.stack(decoder_hidden_states_list, dim=1)
 
         # Get probs to copy or generate
-        vocab_probs: Tensor = self.pointer_generator(batch.input_ids.clone(), encoder_hidden_states,
-                                                     decoder_hidden_states, RunMode.TRAIN)
+        vocab_probs: Tensor = self.pointer_generator(
+            batch.input_ids.clone(),
+            encoder_hidden_states,
+            decoder_hidden_states,
+            RunMode.TRAIN,
+        )
 
         return vocab_probs
 
     def predict(self, batch: ParseInputs) -> Tensor:
         # Encode
-        encoder_hidden_states = self.encoder(input_ids=batch.input_ids,
-                                             attention_mask=batch.attn_mask).last_hidden_state
+        encoder_hidden_states = self.encoder(
+            input_ids=batch.input_ids, attention_mask=batch.attn_mask
+        ).last_hidden_state
 
         # Init outputs with <BOS>
-        outputs: Tensor = torch.tile(self.pad_token_id, (len(batch.input_ids), self.max_seq_len))
+        outputs: Tensor = torch.tile(
+            self.pad_token_id, (len(batch.input_ids), self.max_seq_len)
+        )
         outputs[:, 0] = self.bos_token_id
 
         # Decode
         for _ in range(self.max_max_seq_len):
             # Get non-terminal outputs
-            indices = (outputs[:, -1] != self.eos_token_id).int() * (outputs[:, -1] != self.pad_token_id).int()
-            indices = torch.nonzero(indices).reshape(-1)    # shape = [-1] or empty
+            indices = (outputs[:, -1] != self.eos_token_id).int() * (
+                outputs[:, -1] != self.pad_token_id
+            ).int()
+            indices = torch.nonzero(indices).reshape(-1)  # shape = [-1] or empty
 
             # Stop if meeting EOS or PAD
             if len(indices) == 0:
@@ -76,7 +98,8 @@ class Seq2SeqCopyPointer(torch.nn.Module):
             decoder_hidden_states = self.decoder(
                 input_ids=past_outputs,
                 encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=batch.attn_mask.index_select(0, indices)).last_hidden_state
+                encoder_attention_mask=batch.attn_mask.index_select(0, indices),
+            ).last_hidden_state
             # Get hidden_states of the last token
             decoder_hidden_states = decoder_hidden_states[:, -1:]
 
@@ -87,7 +110,8 @@ class Seq2SeqCopyPointer(torch.nn.Module):
                 encoder_hidden_states=encoder_hidden_states.index_select(0, indices),
                 encoder_attn_mask=batch.attn_mask.index_select(0, indices),
                 decoder_hidden_states=decoder_hidden_states,
-                run_mode=RunMode.TEST)
+                run_mode=RunMode.TEST,
+            )
 
             # beam-search
             outputs = self.searcher(outputs, past_outputs)
