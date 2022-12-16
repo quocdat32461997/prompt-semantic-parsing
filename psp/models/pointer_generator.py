@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from psp.constants import RunMode
+from psp.models.model_utils import FFN
 
 
 class PointerGenerator(torch.nn.Module):
@@ -32,43 +33,31 @@ class PointerGenerator(torch.nn.Module):
             ontology_vocab_ids
         )  # [ontology_vocab]
 
-        self.copier = torch.nn.ModuleList(
-            [
-                torch.nn.MultiheadAttention(
-                    num_heads=num_heads,
-                    embed_dim=input_dim,
-                    dropout=dropout,
-                    batch_first=True,
-                ),
-                torch.nn.Linear(input_dim, 1),
-            ]
+        # copier
+        self.mha = torch.nn.MultiheadAttention(
+            num_heads=num_heads,
+            embed_dim=input_dim,
+            dropout=dropout,
+            batch_first=True,
         )
-
-        self.generator = torch.nn.ModuleList()
-        for index, hidden_dim in enumerate(hidden_dim_list):
-            self.generator.append(torch.nn.Linear(input_dim, hidden_dim))
-            if index < len(hidden_dim_list) - 1:
-                self.generator.append(torch.nn.ReLU())
-                self.generator.append(torch.nn.Dropout(dropout))
-            input_dim = hidden_dim
-
         self.copy_head = torch.nn.Linear(input_dim, 1)
+
+        # genrator
+        self.generator = FFN(
+            input_dim=input_dim, hidden_dim_list=hidden_dim_list, dropout=dropout
+        )
 
     def forward(
         self,
         source_input_ids: Tensor,
         encoder_hidden_states: Tensor,
-        encoder_attn_mask: Tensor,
         decoder_hidden_states: Tensor,
-        run_mode: RunMode,
     ) -> Tensor:
         """
         Args:
             source_input_ids: Token-ids from the source sequence [batch_size, source_seq_len]
             encoder_hidden_states: [batch_size, source_seq_len, embed_size]
-            encoder_attn_mask: [batch_size, source_seq_len]
             decoder_hidden_states: [batch_size, max_seq_len or 1, embed_size]
-            run_mode: RunMode to switch between log_softmax for training of softmax for inference.
         """
 
         # Generate ontology
@@ -78,37 +67,38 @@ class PointerGenerator(torch.nn.Module):
         # Copy from source sequences
         # context_outputs: [batch_size, max_seq_len or 1, embed_dim]
         # copy_source_probs: [batch_ssize, max_seq_len or 1, source_seq_len]
-        context_outputs, copy_source_probs = self.copier(
-            query=encoder_hidden_states,
-            key=decoder_hidden_states,
-            attention_mask=encoder_attn_mask,
+        context_outputs, from_source_probs = self.mha(
+            query=decoder_hidden_states,
+            key=encoder_hidden_states,
+            value=encoder_hidden_states,
             need_weights=True,
         )
-        copy_logits: Tensor = self.copy_head(
-            context_outputs
-        )  # [batch_size, max_seq_len or 1, 1]
 
-        # Final predictions if in either eval or test modes
-        softmax_func = F.log_softmax if run_mode == RunMode.TRAIN else F.softmax
-        ontology_probs: Tensor = softmax_func(
-            ontology_logits
+        # copy_logits: [batch_size, max_seq_len or 1, 1]
+        copy_logits = self.copy_head(context_outputs)
+
+        # Get probs to generate onotlogies or copy from source
+        ontology_probs: Tensor = F.softmax(
+            ontology_logits, dim=-1
         )  # [batch_size, max_seq_len or 1, ontology_vocab_size]
-        copy_probs: Tensor = softmax_func(
+        copy_probs: Tensor = torch.sigmoid(
             copy_logits
         )  # [batch_size, max_seq_len or 1, 1]
 
         # Get final probs
-        copy_source_probs *= (
-            copy_probs  # [batch_size, max_seq_len or 1, source_seq_len]
+        copy_source_probs = (
+            from_source_probs
+            * copy_probs  # [batch_size, max_seq_len or 1, source_seq_len]
         )
-        ontology_probs *= (
+        generate_ontology_probs = ontology_probs * (
             1 - copy_probs
         )  # [batch_size, max_seq_len or 1, ontology_vocab_size]
 
         # Parse into full vocabs
         # [batch_size, max_seq_lne or 1, vocab_size]
-        vocab_probs: Tensor = torch.zero(
-            copy_probs.shape[:2] + [self.vocab_size], dtype=copy_probs.dtype
+        vocab_probs: Tensor = torch.zeros(
+            list(copy_source_probs.shape[:2]) + [self.vocab_size],
+            dtype=copy_probs.dtype,
         )
 
         source_input_ids = source_input_ids.unsqueeze(
@@ -124,9 +114,11 @@ class PointerGenerator(torch.nn.Module):
             [1, 1, -1]
         )  # [1, 1, ontology_vocab]
         # [batch_size, max_seq_len or 1, ontology_vocab]
-        ontology_vocab_ids = torch.tile(ontology_vocab_ids, vocab_probs.shape[:2] + [1])
+        ontology_vocab_ids = torch.tile(
+            ontology_vocab_ids, list(vocab_probs.shape[:2]) + [1]
+        )
         vocab_probs = vocab_probs.scatter_add_(
-            dim=-1, index=self.ontology_vocab_ids, src=ontology_probs
+            dim=-1, index=ontology_vocab_ids, src=generate_ontology_probs
         )
 
         return vocab_probs

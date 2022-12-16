@@ -21,6 +21,13 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         super().__init__()
         bart_model = BartModel.from_pretrained(pretrained)
 
+        # resize size of token-embedding
+        bart_model.resize_token_embeddings(vocab_size)
+
+        assert bos_token_id == bart_model.config.bos_token_id
+        assert eos_token_id == bart_model.config.eos_token_id
+        assert pad_token_id == bart_model.config.pad_token_id
+
         self.eos_token_id: int = eos_token_id
         self.pad_token_id: int = pad_token_id
         self.bos_token_id: int = bos_token_id
@@ -47,26 +54,28 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         ).last_hidden_state  # [batch_size, max_seq_len, embed_dim]
 
         decoder_hidden_states_list: List[Tensor] = []
+
         # Decode
-        for step in range(1, self.max_seq_len - 1):
+        decoder_seq_len = batch.semantic_parse_ids.shape[-1]
+        for step in range(1, decoder_seq_len):
             decoder_hidden_states = self.decoder(
                 input_ids=batch.semantic_parse_ids[:, :step],
-                atteention_mask=batch.semantic_parse_attn_mask[:, :step],
+                attention_mask=batch.semantic_parse_attn_mask[:, :step],
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=batch.attn_mask,
             ).last_hidden_state
             # Get hidden_states of the last token
             decoder_hidden_states_list.append(decoder_hidden_states[:, -1:])
-
-        decoder_hidden_states: Tensor = torch.stack(decoder_hidden_states_list, dim=1)
+        decoder_hidden_states: Tensor = torch.concat(decoder_hidden_states_list, dim=1)
 
         # Get probs to copy or generate
         vocab_probs: Tensor = self.pointer_generator(
-            batch.input_ids.clone(),
-            encoder_hidden_states,
-            decoder_hidden_states,
-            RunMode.TRAIN,
+            source_input_ids=batch.input_ids.clone(),
+            encoder_hidden_states=encoder_hidden_states,
+            decoder_hidden_states=decoder_hidden_states,
         )
+        # Apply log over vocab_probs
+        vocab_probs = torch.log(vocab_probs)
 
         return vocab_probs
 

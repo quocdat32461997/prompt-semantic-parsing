@@ -40,7 +40,7 @@ class ParseInputs(NamedTuple):
     domain: Union[int, Tensor]
     input_ids: Tensor
     attn_mask: Tensor
-    semantic_parse: Tensor
+    semantic_parse_ids: Tensor
     semantic_parse_attn_mask: Tensor
 
 

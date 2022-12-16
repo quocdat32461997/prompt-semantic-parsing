@@ -1,12 +1,15 @@
 {
-    "epochs": 1,
+    "data": "topv2",
+    "model_name": "Seq2SeqCopyPointer",
+    "parser_name": "LowResourceSemanticParser",
+    "max_epochs": 1,
     "lr": 1e-3,
-    "batch_size": 128,
+    "batch_size": 2,
     "decay_rate": 0.9,
     "dropout": 0.3,
     "print_iter": 50,
     "save_iter": 200,
     "val_iter": 500,
     "device": null,
-    "save_dir": "./ckpt"
+    "save_dir": "./ckpt/"
 }
