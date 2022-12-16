@@ -6,47 +6,58 @@ import pandas as pd
 from torch import Tensor
 from torch.utils.data import Dataset, DataLoader
 from transformers import BartTokenizer
-from psp.constants import ListInputs, OntologyVocabs, TOPv2Domain, ParseInputs, Datasets, ListInputs, RunMode
+from psp.constants import (
+    ListInputs,
+    OntologyVocabs,
+    TOPv2Domain,
+    ParseInputs,
+    DatasetPaths,
+    RunMode,
+)
 from psp.dataset.data_utils import read_and_merge
 
 
 class Tokenizer:
-    def __init__(self, pretrained: str, dataset: str):
+    def __init__(self, pretrained: str, dataset_path: str):
         # Init tokenizer and add ontology vocabs
         self.tokenizer: BartTokenizer = BartTokenizer.from_pretrained(pretrained)
-
         # Read onotlogy vocabs
-        if dataset == Datasets.TOPv2:
+        if dataset_path == DatasetPaths.TOPv2:
             self._read_topv2_ontology_vocabs()
         else:
-            raise ValueError("{} is an unsupported dataset.".format(dataset))
+            raise ValueError("{} is an unsupported dataset.".format(dataset_path))
 
     def batch_encode_plus(self, batch_text: List[str], **kwargs):
         return self.tokenizer.batch_encode_plus(batch_text, **kwargs)
 
     def _read_topv2_ontology_vocabs(self):
         """Read TOPv2 ontology vocabs and add to tokenizer."""
-
         # Read ontology vocab
-        with open(OntologyVocabs.TOPv2.value, 'rb') as file:
-            self.ontology_per_domain_map: Dict[str, Dict[str, List[str]]] = pickle.load(file)
-
+        with open(OntologyVocabs.TOPv2.value, "rb") as file:
+            self.ontology_per_domain_map: Dict[str, Dict[str, List[str]]] = pickle.load(
+                file
+            )
         # Get lists of intents and slots
         self.intent_list: List[str] = []
         self.slot_list: List[str] = []
         for ontology_per_domain in self.ontology_per_domain_map.values():
-            self.intent_list.extend(ontology_per_domain['intents'])
-            self.slot_list.extend(ontology_per_domain['slots'])
-
+            self.intent_list.extend(ontology_per_domain["intents"])
+            self.slot_list.extend(ontology_per_domain["slots"])
         # Remove duplicates
         self.intent_list = list(set(self.intent_list))
-        self.slot_list = list(set(self.slot_list))
 
         # Add ontology vocabs to tokenizer
         self.ontology_list: List[str] = self.intent_list + self.slot_list
         self.tokenizer.add_tokens(self.ontology_list, special_tokens=True)
 
-    def __call__(self, inputs: Union[str, List[str]], **kwargs) -> Union[List[int], List[List[int]]]:
+        # get ids of ontology vocab
+        self.ontology_id_list = [
+            self.tokenizer.vocab_size + i for i in range(len(self.ontology_list))
+        ]
+
+    def __call__(
+        self, inputs: Union[str, List[str]], **kwargs
+    ) -> Union[List[int], List[List[int]]]:
         return self.tokenizer(inputs, **kwargs)
 
     @property
@@ -74,6 +85,10 @@ class Tokenizer:
         return len(self.tokenizer)
 
     @property
+    def ontology_vocab_ids(self) -> int:
+        return self.ontology_id_list
+
+    @property
     def ontology_vocab_size(self) -> int:
         return len(self.ontology_list)
 
@@ -88,9 +103,9 @@ class Tokenizer:
 
 class TOPv2Dataset(Dataset):
     BUCKET_DICT: Dict[str, str] = {
-        'train': '_train.tsv',
-        'eval': '_eval.tsv',
-        'test': '_test.tsv',
+        "train": "_train.tsv",
+        "eval": "_eval.tsv",
+        "test": "_test.tsv",
     }
 
     def __init__(self, bucket: RunMode) -> None:
@@ -98,8 +113,14 @@ class TOPv2Dataset(Dataset):
 
         # Read data
         self.data: pd.DataFrame = read_and_merge(
-            [os.path.join(Datasets.TOPv2.value, domain.name + TOPv2Dataset.BUCKET_DICT[bucket.value])
-                for domain in TOPv2Domain])
+            [
+                os.path.join(
+                    DatasetPaths.TOPv2.value,
+                    domain.name + TOPv2Dataset.BUCKET_DICT[bucket.value],
+                )
+                for domain in TOPv2Domain
+            ]
+        )
 
     def __len__(self) -> int:
         return len(self.data)
@@ -110,9 +131,13 @@ class LowResourceTOpv2Dataset(TOPv2Dataset):
         sample = self.data.iloc[idx]
 
         # Encode domain
-        domain: int = TOPv2Domain[sample['domain']].value
+        domain: int = TOPv2Domain[sample["domain"]].value
 
-        return ListInputs(domain=domain, utterance=sample['utterance'], semantic_parse=sample['semantic_parse'])
+        return ListInputs(
+            domain=domain,
+            utterance=sample["utterance"],
+            semantic_parse=sample["semantic_parse"],
+        )
 
 
 class PromptTOPv2Dataset(TOPv2Dataset):
@@ -120,11 +145,11 @@ class PromptTOPv2Dataset(TOPv2Dataset):
         return None
 
 
-class DataLoader(DataLoader):
-    def __init__(self, tokenizer: Tokenizer, dataset_name: Datasets, **kwargs):
+class SMPDataLoader(DataLoader):
+    def __init__(self, tokenizer: Tokenizer, dataset_path: DatasetPaths, **kwargs):
         # Get collate_fn
         collate_fn = None
-        if dataset_name == Datasets.TOPv2:
+        if dataset_path == DatasetPaths.TOPv2:
             collate_fn = self.collate_topv2_parse_inputs
 
         super().__init__(collate_fn=collate_fn, **kwargs)
@@ -146,16 +171,28 @@ class DataLoader(DataLoader):
         domain_tensor: Tensor = torch.tensor(domain_list)
 
         # Tokenize utterance and semantic_parse
-        tokenized_utterance = self.tokenizer.batch_encode_plus(utterance_list, truncation=True,
-                                                               add_special_tokens=True, max_length=self.tokenizer.max_seq_len,
-                                                               padding='max_length', return_tensors='pt')
-        tokenized_semantic_parse = self.tokenizer.batch_encode_plus(semantic_parse_list, truncation=True,
-                                                                    add_special_tokens=True, max_length=self.tokenizer.max_seq_len,
-                                                                    padding='max_length', return_tensors='pt')
+        tokenized_utterance = self.tokenizer.batch_encode_plus(
+            utterance_list,
+            truncation=True,
+            add_special_tokens=True,
+            max_length=self.tokenizer.max_seq_len,
+            padding="max_length",
+            return_tensors="pt",
+        )
+        tokenized_semantic_parse = self.tokenizer.batch_encode_plus(
+            semantic_parse_list,
+            truncation=True,
+            add_special_tokens=True,
+            max_length=self.tokenizer.max_seq_len,
+            padding="max_length",
+            return_tensors="pt",
+        )
 
         # Convert to Tensor and parse back into ParseInputs
-        return ParseInputs(domain=domain_tensor,
-                           input_ids=tokenized_utterance['input_ids'],
-                           attn_mask=tokenized_utterance['attention_mask'],
-                           semantic_parse=tokenized_semantic_parse['input_ids'],
-                           semantic_parse_attn_mask=tokenized_semantic_parse['attention_mask'])
+        return ParseInputs(
+            domain=domain_tensor,
+            input_ids=tokenized_utterance["input_ids"],
+            attn_mask=tokenized_utterance["attention_mask"],
+            semantic_parse=tokenized_semantic_parse["input_ids"],
+            semantic_parse_attn_mask=tokenized_semantic_parse["attention_mask"],
+        )
