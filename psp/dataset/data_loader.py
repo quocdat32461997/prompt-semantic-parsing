@@ -47,13 +47,15 @@ class Tokenizer:
         self.intent_list = list(set(self.intent_list))
 
         # Add ontology vocabs to tokenizer
-        self.ontology_list: List[str] = self.intent_list + self.slot_list
-        self.tokenizer.add_tokens(self.ontology_list, special_tokens=True)
+        self.ontology_list: List[str] = list(set(self.intent_list + self.slot_list))
+
+        new_added_ontology_tokens = self.tokenizer.add_tokens(
+            self.ontology_list, special_tokens=True
+        )
+        print("Added {} ontology tokens.".format(new_added_ontology_tokens))
 
         # get ids of ontology vocab
-        self.ontology_id_list = [
-            self.tokenizer.vocab_size + i for i in range(len(self.ontology_list))
-        ]
+        self.ontology_id_list = self.tokenizer.encode(self.ontology_list)[1:-1]
 
     def __call__(
         self, inputs: Union[str, List[str]], **kwargs
@@ -127,7 +129,7 @@ class TOPv2Dataset(Dataset):
 
 
 class LowResourceTOpv2Dataset(TOPv2Dataset):
-    def __getitem__(self, idx) -> ParseInputs:
+    def __getitem__(self, idx) -> ListInputs:
         sample = self.data.iloc[idx]
 
         # Encode domain
@@ -141,7 +143,7 @@ class LowResourceTOpv2Dataset(TOPv2Dataset):
 
 
 class PromptTOPv2Dataset(TOPv2Dataset):
-    def __getitem__(self, idx) -> ParseInputs:
+    def __getitem__(self, idx) -> ListInputs:
         return None
 
 
@@ -176,7 +178,7 @@ class SMPDataLoader(DataLoader):
             truncation=True,
             add_special_tokens=True,
             max_length=self.tokenizer.max_seq_len,
-            padding="max_length",
+            padding="longest",
             return_tensors="pt",
         )
         tokenized_semantic_parse = self.tokenizer.batch_encode_plus(
@@ -184,7 +186,7 @@ class SMPDataLoader(DataLoader):
             truncation=True,
             add_special_tokens=True,
             max_length=self.tokenizer.max_seq_len,
-            padding="max_length",
+            padding="longest",
             return_tensors="pt",
         )
 
@@ -193,6 +195,6 @@ class SMPDataLoader(DataLoader):
             domain=domain_tensor,
             input_ids=tokenized_utterance["input_ids"],
             attn_mask=tokenized_utterance["attention_mask"],
-            semantic_parse=tokenized_semantic_parse["input_ids"],
+            semantic_parse_ids=tokenized_semantic_parse["input_ids"],
             semantic_parse_attn_mask=tokenized_semantic_parse["attention_mask"],
         )
