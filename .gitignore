@@ -135,4 +135,4 @@ dmypy.json
 .psp/dataset/top-dataset-semantic-parsing/*
 .psp/dataset/top-dataset-semantic-parsing
 
-.torchtools
+torchtools

@@ -4,13 +4,15 @@ from torch import Tensor
 
 
 class RunMode(Enum):
-    TRAIN: str = 'train'
-    EVAL: str = 'eval'
-    TEST: str = 'test'
+    TRAIN: str = "train"
+    EVAL: str = "eval"
+    TEST: str = "test"
 
 
-class Datasets(Enum):
-    TOPv2: str = "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/datasets/TOPv2_Dataset"
+class DatasetPaths(Enum):
+    TOPv2: str = (
+        "/Users/datqngo/Desktop/projects/prompt-semantic-parsing/datasets/TOPv2_Dataset"
+    )
 
 
 class OntologyVocabs(Enum):
@@ -38,11 +40,11 @@ class ParseInputs(NamedTuple):
     domain: Union[int, Tensor]
     input_ids: Tensor
     attn_mask: Tensor
-    semantic_parse: Tensor
+    semantic_parse_ids: Tensor
     semantic_parse_attn_mask: Tensor
 
 
-PRETRAINED_BART_MODEL: str = 'facebook/bart-base'
+PRETRAINED_BART_MODEL: str = "facebook/bart-base"
 
 ONTOLOGY_SCOPE_PATTERN: str = "\[IN:\w+|\[SL:\w+|\]"
 ONTOLOGY_PATTERN: str = "\[IN:\w+|\[SL:\w+"
