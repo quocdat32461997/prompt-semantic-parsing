@@ -136,3 +136,4 @@ dmypy.json
 .psp/dataset/top-dataset-semantic-parsing
 
 torchtools
+ckpt

@@ -1,20 +1,15 @@
-import os
 import pickle
 import torch
 from typing import List, Dict, Union
-import pandas as pd
 from torch import Tensor
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from transformers import BartTokenizer
 from psp.constants import (
     ListInputs,
     OntologyVocabs,
-    TOPv2Domain,
     ParseInputs,
     DatasetPaths,
-    RunMode,
 )
-from psp.dataset.data_utils import read_and_merge
 
 
 class Tokenizer:
@@ -43,7 +38,7 @@ class Tokenizer:
         for ontology_per_domain in self.ontology_per_domain_map.values():
             self.intent_list.extend(ontology_per_domain["intents"])
             self.slot_list.extend(ontology_per_domain["slots"])
-        # Remove duplicates
+        # Remove duplicates (if existed)
         self.intent_list = list(set(self.intent_list))
 
         # Add ontology vocabs to tokenizer
@@ -101,50 +96,6 @@ class Tokenizer:
     @property
     def num_slot(self) -> int:
         return len(self.slot_list)
-
-
-class TOPv2Dataset(Dataset):
-    BUCKET_DICT: Dict[str, str] = {
-        "train": "_train.tsv",
-        "eval": "_eval.tsv",
-        "test": "_test.tsv",
-    }
-
-    def __init__(self, bucket: RunMode) -> None:
-        super().__init__()
-
-        # Read data
-        self.data: pd.DataFrame = read_and_merge(
-            [
-                os.path.join(
-                    DatasetPaths.TOPv2.value,
-                    domain.name + TOPv2Dataset.BUCKET_DICT[bucket.value],
-                )
-                for domain in TOPv2Domain
-            ]
-        )
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-
-class LowResourceTOpv2Dataset(TOPv2Dataset):
-    def __getitem__(self, idx) -> ListInputs:
-        sample = self.data.iloc[idx]
-
-        # Encode domain
-        domain: int = TOPv2Domain[sample["domain"]].value
-
-        return ListInputs(
-            domain=domain,
-            utterance=sample["utterance"],
-            semantic_parse=sample["semantic_parse"],
-        )
-
-
-class PromptTOPv2Dataset(TOPv2Dataset):
-    def __getitem__(self, idx) -> ListInputs:
-        return None
 
 
 class SMPDataLoader(DataLoader):
