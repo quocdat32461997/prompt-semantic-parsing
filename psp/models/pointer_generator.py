@@ -58,6 +58,8 @@ class PointerGenerator(torch.nn.Module):
             source_input_ids: Token-ids from the source sequence [batch_size, source_seq_len]
             encoder_hidden_states: [batch_size, source_seq_len, embed_size]
             decoder_hidden_states: [batch_size, max_seq_len or 1, embed_size]
+        Returns:
+            vocab_probs: Tensor of shape [batch_size, max_seq_len or 1, vocab_size]
         """
 
         # Generate ontology
@@ -95,17 +97,17 @@ class PointerGenerator(torch.nn.Module):
         )  # [batch_size, max_seq_len or 1, ontology_vocab_size]
 
         # Parse into full vocabs
-        # [batch_size, max_seq_lne or 1, vocab_size]
+        # [batch_size, max_seq_len or 1, vocab_size]
         vocab_probs: Tensor = torch.zeros(
             list(copy_source_probs.shape[:2]) + [self.vocab_size],
             dtype=copy_probs.dtype,
         )
 
-        source_input_ids = source_input_ids.unsqueeze(
-            1
-        )  # [batch_size, 1, source_seq_len]
-        # [batch_size, max_seq_len or 1, source_seq_len]
+        # [batch_size, 1, source_seq_len]
+        source_input_ids = source_input_ids.unsqueeze(1)
         source_input_ids = torch.tile(source_input_ids, [1, copy_probs.shape[1], 1])
+
+        # [batch_size, max_seq_len or 1, source_seq_len]
         vocab_probs = vocab_probs.scatter_add_(
             dim=-1, index=source_input_ids, src=copy_source_probs
         )

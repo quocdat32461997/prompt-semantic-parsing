@@ -78,15 +78,14 @@ class LowResourceSemanticParser(SemmanticParser):
     def _run(self, batch: ParseInputs, run_mode: RunMode) -> Tensor:
 
         # Forward
-        outputs: Tensor = self.model(batch)
+        outputs: Tensor = self.model(batch, run_mode=run_mode)
 
         # Compute loss
         loss = self.compute_loss(outputs, batch)
         metrics = {"loss": loss}
 
+        # Compute metrics
         if run_mode == RunMode.EVAL or run_mode == RunMode.TEST:
-            # Compute and log metrics
-            outputs = self.model.predict(batch)
             metrics.update(self.compute_metrics(outputs, batch))
 
         # Log metrics
@@ -97,11 +96,11 @@ class LowResourceSemanticParser(SemmanticParser):
 
         return metrics
 
-    def training_step(self, batch: ParseInputs):
+    def training_step(self, batch: ParseInputs, batch_idx: int):
         return self._run(batch, run_mode=RunMode.TRAIN)
 
-    def validattion_step(self, batch: ParseInputs):
+    def validattion_step(self, batch: ParseInputs, batch_idx: int):
         return self._run(batch, run_mode=RunMode.EVAL)
 
-    def test_step(self, batch: ParseInputs):
+    def test_step(self, batch: ParseInputs, batch_idx: int):
         return self._run(batch, run_mode=RunMode.TEST)

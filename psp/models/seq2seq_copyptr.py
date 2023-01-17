@@ -17,8 +17,16 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         bos_token_id: int,
         eos_token_id: int,
         pad_token_id: int,
+        beam_size: int,
+        alpha: float,
+        reward: float,
+        max_dec_steps: int = None,
+        max_seq_len: int = None,
+        **kwargs,
     ):
-        super().__init__()
+        super(Seq2SeqCopyPointer, self).__init__()
+
+        # Load pretrained model
         bart_model = BartModel.from_pretrained(pretrained)
 
         # resize size of token-embedding
@@ -32,26 +40,58 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         self.pad_token_id: int = pad_token_id
         self.bos_token_id: int = bos_token_id
 
-        self.max_seq_len: int = bart_model.config.max_position_embeddings
+        self.max_seq_len: int = (
+            max_seq_len if max_seq_len else bart_model.config.max_position_embeddings
+        )
+
+        self.max_dec_steps: int = max_dec_steps if max_dec_steps else self.max_seq_len
+        assert self.max_dec_steps <= self.max_seq_len
 
         self.encoder = bart_model.encoder
         self.decoder = bart_model.decoder
 
-        self.pointer_generator = PointerGenerator(
+        self.pointer_generator: PointerGenerator = PointerGenerator(
             vocab_size=vocab_size,
             ontology_vocab_ids=ontology_vocab_ids,
             input_dim=bart_model.config.d_model,
             hidden_dim_list=[512, 512, len(ontology_vocab_ids)],
         )
+        self.searcher: BeamSearch = BeamSearch(
+            beam_size=beam_size,
+            alpha=alpha,
+            reward=reward,
+            bos_token_id=self.bos_token_id,
+            eos_token_id=self.eos_token_id,
+            pad_token_id=self.pad_token_id,
+            max_queue_size=kwargs["max_queue_size"],
+            min_dec_steps=kwargs["min_dec_steps"],
+            n_best=kwargs["n_best"],
+            max_seq_len=self.max_seq_len,
+        )
 
-        self.searcher: BeamSearch = BeamSearch()
+    def _encode(self, input_ids: Tensor, attn_mask: Tensor):
+        """
+        Args:
+            - input_ids: Tensor of word-ids, [batch_size, max_seq_len]
+            - attn_mask: Tensor of attention masks, [batch_size, max_seq_len]
+        Returns:
+            Last hidden-state of the encoder in shape [batch_size, max_seq_len, embed_dim]
+        """
+        return self.encoder(
+            input_ids=input_ids, attention_mask=attn_mask
+        ).last_hidden_state
 
-    def forward(self, batch: ParseInputs) -> Tensor:
+    def forward(self, batch: ParseInputs, run_mode: RunMode) -> Tensor:
+        return (
+            self._forward(batch) if run_mode == RunMode.TRAIN else self._generate(batch)
+        )
+
+    def _forward(self, batch: ParseInputs) -> Tensor:
         """Supports token_ids only."""
         # Encode inputs
-        encoder_hidden_states = self.encoder(
-            input_ids=batch.input_ids, attention_mask=batch.attn_mask
-        ).last_hidden_state  # [batch_size, max_seq_len, embed_dim]
+        encoder_hidden_states = self._encode(
+            input_ids=batch.input_ids, attn_mask=batch.attn_mask
+        )  # [batch_size, max_seq_len, embed_dim]
 
         decoder_hidden_states_list: List[Tensor] = []
 
@@ -70,7 +110,7 @@ class Seq2SeqCopyPointer(torch.nn.Module):
 
         # Get probs to copy or generate
         vocab_probs: Tensor = self.pointer_generator(
-            source_input_ids=batch.input_ids.clone(),
+            source_input_ids=batch.input_ids,  # .clone(),
             encoder_hidden_states=encoder_hidden_states,
             decoder_hidden_states=decoder_hidden_states,
         )
@@ -79,53 +119,53 @@ class Seq2SeqCopyPointer(torch.nn.Module):
 
         return vocab_probs
 
-    def predict(self, batch: ParseInputs) -> Tensor:
-        # Encode
-        encoder_hidden_states = self.encoder(
-            input_ids=batch.input_ids, attention_mask=batch.attn_mask
-        ).last_hidden_state
+    def _generate(self, batch: ParseInputs) -> Tensor:
+        batch_size: int = len(batch.input_ids)
 
-        # Init outputs with <BOS>
-        outputs: Tensor = torch.tile(
-            self.pad_token_id, (len(batch.input_ids), self.max_seq_len)
+        # Encode
+        encoder_hidden_states = self._encode(
+            input_ids=batch.input_ids, attn_mask=batch.attn_mask
+        )  # [batch_size, encoder_input_len, embed_dim]
+
+        # Initialize decoder inputs
+        self.searcher.init_decoder_inputs(
+            batch_size=batch_size,
+            device=encoder_hidden_states.device,
         )
-        outputs[:, 0] = self.bos_token_id
 
         # Decode
-        for _ in range(self.max_max_seq_len):
-            # Get non-terminal outputs
-            indices = (outputs[:, -1] != self.eos_token_id).int() * (
-                outputs[:, -1] != self.pad_token_id
-            ).int()
-            indices = torch.nonzero(indices).reshape(-1)  # shape = [-1] or empty
+        # First index is reserved for <BOS>
+        for step in range(1, self.max_dec_steps):
 
-            # Stop if meeting EOS or PAD
-            if len(indices) == 0:
+            # Stop generation
+            if self.searcher.is_search_done():
                 break
-            past_outputs = torch.index_select(outputs, 0, indices)
 
+            decoder_inputs, decoder_attn_mask = self.searcher.get_decoder_inputs(
+                step=step
+            )
             decoder_hidden_states = self.decoder(
-                input_ids=past_outputs,
+                input_ids=decoder_inputs,
+                attention_mask=decoder_attn_mask,
                 encoder_hidden_states=encoder_hidden_states,
-                encoder_attention_mask=batch.attn_mask.index_select(0, indices),
+                encoder_attention_mask=batch.attn_mask,
             ).last_hidden_state
+
             # Get hidden_states of the last token
             decoder_hidden_states = decoder_hidden_states[:, -1:]
 
             # Generate probs to copy from source tokens or generate ontology tokens
-            # [batch_size, 1, vocab_size]
+            # [batch_size or batch_size * beam_size, 1, vocab_size]
             vocab_probs: Tensor = self.pointer_generator(
-                source_input_ids=batch.input_ids.index_select(0, indices).clone(),
-                encoder_hidden_states=encoder_hidden_states.index_select(0, indices),
-                encoder_attn_mask=batch.attn_mask.index_select(0, indices),
+                source_input_ids=batch.input_ids,
+                encoder_hidden_states=encoder_hidden_states,
                 decoder_hidden_states=decoder_hidden_states,
-                run_mode=RunMode.TEST,
             )
+            vocab_probs = torch.log(vocab_probs)
 
             # beam-search
-            outputs = self.searcher(outputs, past_outputs)
+            vocab_probs = vocab_probs.view((batch_size, -1))
+            self.searcher(probs=vocab_probs)
 
-            # Update outputs
-            outputs[indices] = torch.cat([past_outputs, outputs])
-
-        return outputs
+        # squeeze and return final outputs
+        return self.searcher.get_final_outputs()

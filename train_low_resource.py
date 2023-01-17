@@ -1,15 +1,24 @@
 import argparse
 from torchtools.configs import Configs
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import TensorBoardLogger
 from psp.constants import PRETRAINED_BART_MODEL, DatasetPaths, RunMode
 from psp.models import Seq2SeqCopyPointer, LowResourceSemanticParser
-from psp.dataset import Tokenizer, LowResourceTOpv2Dataset, SMPDataLoader
+from psp.dataset import (
+    Tokenizer,
+    LowResourceTOPv2Dataset,
+    SMPDataLoader,
+    LowResourceTOPDataset,
+)
 
 
 def setup(configs, **kwargs):
     if configs.data == "topv2":
         dataset_path = DatasetPaths.TOPv2
-        dataset = LowResourceTOpv2Dataset
+        dataset = LowResourceTOPv2Dataset
+    elif configs.data == "top":
+        dataset_path = DatasetPaths.TOP
+        dataset = LowResourceTOPDataset
     else:
         raise ValueError("{} dataset is not a valid choie.".format(configs.data))
     # Inint tokenizer
@@ -48,6 +57,12 @@ def setup(configs, **kwargs):
             bos_token_id=tokenizer.bos_token_id,
             eos_token_id=tokenizer.eos_token_id,
             pad_token_id=tokenizer.pad_token_id,
+            beam_size=configs.beam_size,
+            alpha=configs.alpha,
+            reward=configs.reward,
+            max_queue_size=configs.max_queue_size,
+            n_best=configs.n_best,
+            min_dec_steps=configs.min_dec_steps,
         )
     else:
         raise ValueError("{} model is not a valid choice.".format(configs.model_name))
@@ -75,18 +90,33 @@ def main(args):
 
     # Create trainer
     print("Initiating trainer.")
-    trainer = pl.Trainer.from_argparse_args(configs, default_root_dir=configs.save_dir)
+    trainer = pl.Trainer.from_argparse_args(
+        configs,
+        default_root_dir=configs.save_dir,
+        enable_progress_bar=True,
+        val_check_interval=configs.val_iter,
+        devices=configs.devices,
+        accelerator=configs.accelerator,
+    )
 
-    # Train
-    print("Training.")
-    trainer.fit(model, dataloaders[RunMode.TRAIN.value])  # , dataloader["val"])
-    # Test
-    print("Testing.")
-    # trainer.test(dataloader["test"])
+    if args.train:
+        # Train
+        print("Training.")
+        trainer.fit(
+            model, dataloaders[RunMode.TRAIN.value], dataloaders[RunMode.EVAL.value]
+        )
+
+    if args.test:
+        # Test
+        print("Testing.")
+        model.eval()
+        trainer.test(model, dataloaders=dataloaders[RunMode.TEST.value])
 
 
 if __name__ == "__main__":
     # Init parser
     parser = argparse.ArgumentParser()
     parser.add_argument("--path-to-config", type=str, required=True)
+    parser.add_argument("--train", action="store_true")
+    parser.add_argument("--test", action="store_true")
     main(parser.parse_args())

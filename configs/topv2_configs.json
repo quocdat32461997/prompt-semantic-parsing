@@ -4,12 +4,18 @@
     "parser_name": "LowResourceSemanticParser",
     "max_epochs": 1,
     "lr": 1e-3,
-    "batch_size": 2,
+    "batch_size": 4,
     "decay_rate": 0.9,
     "dropout": 0.3,
     "print_iter": 50,
     "save_iter": 200,
     "val_iter": 500,
-    "device": null,
-    "save_dir": "./ckpt/"
+    "devices": "auto",
+    "save_dir": "./ckpt/",
+    "min_dec_steps": 15,
+    "n_best": 10,
+    "max_queue_size": 1000,
+    "beam_size": 10,
+    "alpha": 1.0,
+    "reward": 1.0
 }

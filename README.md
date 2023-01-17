@@ -7,6 +7,12 @@ Prompting for Task-Oriented Semantic Parsing
 * TOPv2
 * Overnight
 
+## Training
+```
+python3 train_low_resource.py --path-to-config configs/path_to_training_configs_per_dataset.json
+```
+
+## Testing
 
 ## Baselines
 * [Low-Resource Domain Adaption for Compositional Task-Oriented Semantic Parsing](https://github.com/quocdat32461997/prompt-semantic-parsing/blob/main/readings/low-resource%20task-oriented%20semantic%20parsing.pdf)
