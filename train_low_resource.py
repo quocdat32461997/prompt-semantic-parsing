@@ -39,12 +39,14 @@ def setup(configs, **kwargs):
         dataset=dataset(bucket=RunMode.EVAL),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
+        run_mode=RunMode.EVAL,
     )
     test_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
         dataset=dataset(bucket=RunMode.TEST),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
+        run_mode=RunMode.EVAL,
     )
 
     # Built models
@@ -109,7 +111,6 @@ def main(args):
     if args.test:
         # Test
         print("Testing.")
-        model.eval()
         trainer.test(model, dataloaders=dataloaders[RunMode.TEST.value])
 
 
