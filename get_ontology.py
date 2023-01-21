@@ -69,7 +69,7 @@ def get_ontology_from_topv2_dataset():
 
         # Map to intents and slots
         for vocab in ontology_vocabs:
-            if vocab.startswith("[IN:") or vocab == "]":
+            if vocab.startswith("[IN:"):
                 intents_per_domain[domain].append(vocab)
             elif vocab.startswith("[SL:"):
                 slots_per_domain[domain].append(vocab)

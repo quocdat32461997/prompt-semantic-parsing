@@ -2,6 +2,12 @@ from typing import NamedTuple, Optional, Union
 from enum import Enum
 from torch import Tensor
 
+# -100, the default ignorance token
+IGNORED_INDEX: int = -100
+
+# end of span token
+EOSPAN_TOKEN: str = "]"
+
 
 class RunMode(Enum):
     TRAIN: str = "train"
@@ -46,6 +52,9 @@ class ParseInputs(NamedTuple):
     attn_mask: Tensor
     semantic_parse_ids: Tensor
     semantic_parse_attn_mask: Tensor
+    intent_mask: Optional[Tensor] = None
+    slot_mask: Optional[Tensor] = None
+    ontology_token_mask: Optional[Tensor] = None
 
 
 PRETRAINED_BART_MODEL: str = "facebook/bart-base"
