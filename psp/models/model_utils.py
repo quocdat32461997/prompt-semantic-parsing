@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 from typing import List
+from psp.constants import IGNORED_INDEX
 
 
 class FFN(torch.nn.Module):
@@ -20,3 +21,19 @@ class FFN(torch.nn.Module):
             hidden_states = layer(hidden_states)
 
         return hidden_states
+
+
+def pad_tensors(
+    tensors: Tensor, batch_size: int, max_length: int, value: int = IGNORED_INDEX
+):
+    """
+    Pad 2D tensors
+    """
+    assert len(tensors.shape) == 2
+    return torch.cat(
+        [
+            tensors,
+            torch.full((batch_size, max_length - tensors.shape[-1]), value),
+        ],
+        dim=-1,
+    )
