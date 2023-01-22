@@ -139,6 +139,7 @@ class BeamSearch(torch.nn.Module):
         decoder_input_list: List[Tensor] = []
         for bid in self.indices:
             if len(self.buffers[bid]) <= self.max_queue_size:
+                # assert self.buffers[bid][0][-1].token_id != self.eos_token_id
                 node: BeamSearchNode = self.buffers[bid][0][-1]  # Get the best node
                 decoder_input_list.append(_build_sequence(node))
                 indices.append(bid)
@@ -148,7 +149,7 @@ class BeamSearch(torch.nn.Module):
         decoder_inputs: Tensor = torch.tile(
             self.bos_token_tensor, (self.batch_size, step)
         )
-        decoder_inputs.index_copy(0, indices, torch.stack(decoder_input_list))
+        decoder_inputs.index_copy_(0, indices, torch.stack(decoder_input_list))
         # udpate decoder_attn_mask
         decoder_attn_mask: Tensor = torch.zeros((self.batch_size, step))
         decoder_attn_mask.index_copy(0, indices, torch.ones((len(indices), step)))
@@ -215,7 +216,7 @@ class BeamSearch(torch.nn.Module):
 
         for bid in self.indices:
             # Skip beam-search if the queue size is too large
-            if len(self.buffers[bid]) >= self.max_queue_size:
+            if len(self.buffers[bid]) > self.max_queue_size:
                 continue
 
             # Get topk results
@@ -255,12 +256,11 @@ def _build_sequence(node: BeamSearchNode, device: str = "cpu"):
 
     while node:
         # Get the current node
-        token_id: int = (
+        outputs.append(
             node.token_id.item()
             if isinstance(node.token_id, torch.Tensor)
             else node.token_id
         )
-        outputs.append(token_id)
         node = node.prev_node
 
     return torch.tensor(outputs[::-1], device=device)

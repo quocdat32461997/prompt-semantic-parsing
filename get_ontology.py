@@ -27,10 +27,12 @@ def get_ontology_from_top_dataset():
 
     # Map to intents and slots
     for vocab in ontology_vocabs:
-        if vocab.startswith("[IN:") or vocab == "]":
+        if vocab.startswith("[IN:"):
             intents.append(vocab)
         elif vocab.startswith("[SL:"):
             slots.append(vocab)
+        elif vocab == "]":
+            pass
         else:
             raise ValueError("{} is not a valid ontology.".format(vocab))
 
@@ -73,6 +75,8 @@ def get_ontology_from_topv2_dataset():
                 intents_per_domain[domain].append(vocab)
             elif vocab.startswith("[SL:"):
                 slots_per_domain[domain].append(vocab)
+            elif vocab == "]":
+                pass
             else:
                 raise ValueError("{} is not a valid ontology.".format(vocab))
 
