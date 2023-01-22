@@ -151,3 +151,11 @@ class Tokenizer:
     @property
     def end_of_span_token_id(self):
         return self.eospan_token_id
+
+    @property
+    def intent_id_list(self) -> List[int]:
+        return list(self.intent_to_id_map.values())
+
+    @property
+    def slot_id_list(self) -> List[int]:
+        return list(self.slot_to_id_map.values())

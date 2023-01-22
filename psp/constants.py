@@ -1,4 +1,4 @@
-from typing import NamedTuple, Optional, Union
+from typing import NamedTuple, Optional, Union, List
 from enum import Enum
 from torch import Tensor
 
@@ -57,7 +57,15 @@ class ParseInputs(NamedTuple):
     ontology_token_mask: Optional[Tensor] = None
 
 
+class ParseOutputs(NamedTuple):
+    outputs: Tensor
+    targets: Tensor
+
+
 PRETRAINED_BART_MODEL: str = "facebook/bart-base"
 
 ONTOLOGY_SCOPE_PATTERN: str = "\[IN:\w+|\[SL:\w+|\]"
 ONTOLOGY_PATTERN: str = "\[IN:\w+|\[SL:\w+"
+
+ONTOLOGY_TYPE_LIST: List[str] = ["ontology", "intents", "slots"]
+SUB_ONTOLOGY_TYPE_LIST: List[str] = ["intents", "slots"]
