@@ -71,7 +71,14 @@ def setup(configs, **kwargs):
 
     print("Initiating parser: {}.".format(configs.parser_name))
     if configs.parser_name == "LowResourceSemanticParser":
-        model = LowResourceSemanticParser(model=model, lr=configs.lr)
+        model = LowResourceSemanticParser(
+            model=model,
+            lr=configs.lr,
+            intent_id_list=tokenizer.intent_id_list,
+            slot_id_list=tokenizer.slot_id_list,
+            ontology_id_list=tokenizer.ontology_vocab_ids,
+            vocab_size=tokenizer.vocab_size,
+        )
     else:
         raise ValueError("{} parser is not a valid choice.".format(configs.parser_name))
 

@@ -1,52 +1,51 @@
 import torch
-from typing import Dict
+from typing import Dict, List
 import pytorch_lightning as pl
 from torch.nn import Module
 from torch import Tensor
 import torch.nn.functional as F
 from torch.optim import Adam
 
-from psp.constants import ParseInputs, RunMode, IGNORED_INDEX
+from psp.constants import ParseInputs, RunMode, IGNORED_INDEX, ONTOLOGY_TYPE_LIST
 from psp.models.optimizers import MAMLOptimizer
 from psp.models.metrics import ExactMatch, IntentSlotMatch
-
-
-def pad_tensors(
-    tensors: Tensor, batch_size: int, max_length: int, value: int = IGNORED_INDEX
-):
-    """
-    Pad 2D tensors
-    """
-    assert len(tensors.shape) == 2
-    return torch.cat(
-        [
-            tensors,
-            torch.full((batch_size, max_length - tensors.shape[-1]), value),
-        ],
-        dim=-1,
-    )
+from psp.models.model_utils import pad_tensors
+from psp.dataset.transforms import ParseTransform
 
 
 class SemmanticParser(pl.LightningModule):
     """Uses BART as the core model."""
 
-    def __init__(self, model: Module, lr: float):
+    def __init__(
+        self,
+        model: Module,
+        lr: float,
+        intent_id_list: List[int],
+        slot_id_list: List[int],
+        ontology_id_list: List[int],
+        vocab_size: int,
+    ):
         super().__init__()
         self.model: Module = model
         self.lr: int = lr
 
-        # build metrics
-        self.build_metrics()
+        # build metrics and parse_transform
+        self.parse_transform: ParseTransform = ParseTransform(
+            intent_id_list, slot_id_list, ontology_id_list, vocab_size
+        )
+        self.build_metrics(num_intents=len(intent_id_list), num_slots=len(slot_id_list))
 
         # save hyperparameters
         self.save_hyperparameters(ignore=["model"])
 
-    def build_metrics(self) -> None:
+    def build_metrics(self, num_intents: int, num_slots: int) -> None:
         # Exact Match (EM) Acc.
         self.em_acc = ExactMatch()
 
         # Precision, Recall, and F1Score for detecting intents and slots
-        self.intent_slot_metrics = IntentSlotMatch()
+        self.intent_slot_metrics = IntentSlotMatch(
+            num_intents=num_intents, num_slots=num_slots
+        )
 
     def _ignore_tokens(self, tensors: Tensor):
         """
@@ -59,8 +58,23 @@ class SemmanticParser(pl.LightningModule):
 
 
 class LowResourceSemanticParser(SemmanticParser):
-    def __init__(self, model: Module, lr: float) -> None:
-        super(LowResourceSemanticParser, self).__init__(model=model, lr=lr)
+    def __init__(
+        self,
+        model: Module,
+        lr: float,
+        intent_id_list: List[int],
+        slot_id_list: List[int],
+        ontology_id_list: List[int],
+        vocab_size: int,
+    ) -> None:
+        super(LowResourceSemanticParser, self).__init__(
+            model=model,
+            lr=lr,
+            intent_id_list=intent_id_list,
+            slot_id_list=slot_id_list,
+            ontology_id_list=ontology_id_list,
+            vocab_size=vocab_size,
+        )
 
         self.loss_fn = torch.nn.NLLLoss()
 
@@ -108,23 +122,22 @@ class LowResourceSemanticParser(SemmanticParser):
         # outputs = self._ignore_tokens(outputs)
         # targets = self._ignore_tokens(targets)
 
-        ontology_token_mask: Tensor = pad_tensors(
-            batch.ontology_token_mask, len(outputs), max_length
-        )
-        intent_mask: Tensor = pad_tensors(batch.intent_mask, len(outputs), max_length)
-        slot_mask: Tensor = pad_tensors(batch.slot_mask, len(outputs), max_length)
-
         metrics: Dict[str, Tensor] = {}
         # Exact Match Acc.
         metrics.update(self.em_acc(outputs, targets))
 
-        # Intent-level and Slot-level metrics
-        metrics.update(
-            self.intent_slot_metrics(
-                outputs, targets, ontology_token_mask, intent_mask, slot_mask
+        # Ontology-levl, Intent-level and Slot-level metrics
+        for token_type in ONTOLOGY_TYPE_LIST:
+            metrics.update(
+                self.intent_slot_metrics(
+                    batch=self.parse_transform(
+                        outputs=outputs, targets=targets, token_type=token_type
+                    ),
+                    token_type=token_type,
+                ),
             )
-        )
 
+        # BLEU score
         return metrics
 
     def configure_optimizers(self):
