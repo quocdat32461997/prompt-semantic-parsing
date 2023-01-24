@@ -1,7 +1,10 @@
+import os
 import argparse
 from torchtools.configs import Configs
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
+from pytorch_lightning.loggers import WandLogger
+from pytorch_lightning.callbacks.early_stopping import EarlyStopping
+from pytorch_lightning.callbacks import ModelCheckpoint
 from psp.constants import PRETRAINED_BART_MODEL, DatasetPaths, RunMode
 from psp.models import Seq2SeqCopyPointer, LowResourceSemanticParser
 from psp.dataset import (
@@ -94,18 +97,34 @@ def main(args):
     print("Reading configs")
     configs = Configs(path=args.path_to_config)
 
+    assert configs.checkpoint_steps <= 3 * configs.val_iter
+
     # Create model
     model, dataloaders = setup(configs=configs)
 
+    # Configure experiment  name
+    experiment_name = configs.parser_name + 'v{}'.format(1 + len(os.listdir(configs.save_dir)))
+    save_dir = configs.save_dir + '/{}'.format(experiment_name)
+    
+    # Configure callbacks
+    early_stopping = EarlyStopping(monitor='em_acc', patience=5, verbose=True, mode='max')
+    checkpoint = ModelCheckpoint(dirpath=save_dir, monitor='em_acc', verbose=True, mode='max', every_n_train_steps=configs.checkpoint_steps)
+    callbacks = [early_stopping, checkpoint]
+
+    # Configure
+    logger = WandLogger(name=experiment_name, project='prompt-semantic-parsing')
+    logger.watch(model, log_model='all')
+    
     # Create trainer
     print("Initiating trainer.")
     trainer = pl.Trainer.from_argparse_args(
         configs,
-        default_root_dir=configs.save_dir,
         enable_progress_bar=True,
-        val_check_interval=configs.val_iter,
+        check_val_every_n_epochs=configs.val_iter,
         devices=configs.devices,
         accelerator=configs.accelerator,
+        callbacks=callbacks,
+        logger=logger,
     )
 
     if args.train:
