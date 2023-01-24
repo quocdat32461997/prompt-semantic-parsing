@@ -10,6 +10,7 @@
     "print_iter": 50,
     "save_iter": 200,
     "val_iter": 500,
+    "checkpoint_iter": 1500,
     "devices": "auto",
     "save_dir": "./ckpt/",
     "min_dec_steps": 15,
