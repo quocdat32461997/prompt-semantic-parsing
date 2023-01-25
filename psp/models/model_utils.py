@@ -23,9 +23,7 @@ class FFN(torch.nn.Module):
         return hidden_states
 
 
-def pad_tensors(
-    tensors: Tensor, batch_size: int, max_length: int, value: int = IGNORED_INDEX
-):
+def pad_tensors(tensors: Tensor, batch_size: int, max_length: int, value: int):
     """
     Pad 2D tensors
     """

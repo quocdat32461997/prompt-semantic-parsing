@@ -76,21 +76,20 @@ class LowResourceSemanticParser(SemmanticParser):
             vocab_size=vocab_size,
         )
 
-        self.loss_fn = torch.nn.NLLLoss()
+        self.loss_fn = torch.nn.NLLLoss(ignore_index=self.model.pad_token_id)
 
     def compute_loss(self, outputs: Tensor, batch: ParseInputs) -> Tensor:
         """
         Args:
-            outputs: Tensor outputs in shape [batch_size, seq_len, vocab_size]
+            outputs: Tensor outputs in shape [batch_size, seq_len - 1, vocab_size] that without <BOS> at the beggining
             batch: ParseInputs object to store semantic_parse_ids (aka gold references)
                 semantic_parse_ids: [batch_size, seq_len]
         """
-        # Outputs and gold references must match the sequence length
-        assert outputs.shape[1] == batch.semantic_parse_ids.shape[-1]
+        # Skip <BOS> in references
+        semantic_parse: Tensor = batch.semantic_parse_ids[:, 1:]
 
-        # Ignore <PAD> and <BOS>
-        semantic_parse: Tensor = self._ignore_tokens(batch.semantic_parse_ids)
-        outputs = self._ignore_tokens(outputs)
+        # Outputs and gold references must match the sequence length
+        assert outputs.shape[1] == semantic_parse.shape[-1]
 
         # reshape outputs to [batch_size, vocab_size, seq_len]
         outputs = torch.reshape(
@@ -117,10 +116,6 @@ class LowResourceSemanticParser(SemmanticParser):
         targets = pad_tensors(
             targets, len(outputs), max_length, value=self.model.pad_token_id
         )
-
-        # Ignore <BOS> and <PAD> tokens
-        # outputs = self._ignore_tokens(outputs)
-        # targets = self._ignore_tokens(targets)
 
         metrics: Dict[str, Tensor] = {}
         # Exact Match Acc.

@@ -61,10 +61,11 @@ class SMPDataLoader(DataLoader):
             return_tensors="pt",
         )
 
-        intent_mask: Optional[Tensor] = None
-        slot_mask: Optional[Tensor] = None
-        ontology_token_mask: Optional[Tensor] = None
+        # intent_mask: Optional[Tensor] = None
+        # slot_mask: Optional[Tensor] = None
+        # ontology_token_mask: Optional[Tensor] = None
         if self.run_mode == RunMode.EVAL:
+            """
             # Initialize dummpy tensors
             one_tensor = torch.ones_like(tokenized_semantic_parse["input_ids"])
             zero_tensor = torch.zeros_like(tokenized_semantic_parse["input_ids"])
@@ -92,6 +93,8 @@ class SMPDataLoader(DataLoader):
                 zero_tensor,
             )
             ontology_token_mask = intent_mask + slot_mask + eospan_token_mask
+            """
+            pass
 
         # Convert to Tensor and parse back into ParseInputs
         return ParseInputs(
@@ -100,7 +103,7 @@ class SMPDataLoader(DataLoader):
             attn_mask=tokenized_utterance["attention_mask"],
             semantic_parse_ids=tokenized_semantic_parse["input_ids"],
             semantic_parse_attn_mask=tokenized_semantic_parse["attention_mask"],
-            intent_mask=intent_mask,
-            slot_mask=slot_mask,
-            ontology_token_mask=ontology_token_mask,
+            # intent_mask=intent_mask,
+            # slot_mask=slot_mask,
+            # ontology_token_mask=ontology_token_mask,
         )

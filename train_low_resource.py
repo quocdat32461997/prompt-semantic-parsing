@@ -2,7 +2,7 @@ import os
 import argparse
 from torchtools.configs import Configs
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandLogger
+from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 from psp.constants import PRETRAINED_BART_MODEL, DatasetPaths, RunMode
@@ -87,7 +87,7 @@ def setup(configs, **kwargs):
 
     return model, {
         "train": train_dataloader,
-        "val": val_dataloader,
+        "eval": val_dataloader,
         "test": test_dataloader,
     }
 
@@ -95,34 +95,42 @@ def setup(configs, **kwargs):
 def main(args):
     # Read and parse configs
     print("Reading configs")
-    configs = Configs(path=args.path_to_config)
-
-    assert configs.checkpoint_steps <= 3 * configs.val_iter
+    configs: Configs = Configs(path=args.path_to_config)
 
     # Create model
     model, dataloaders = setup(configs=configs)
 
     # Configure experiment  name
-    experiment_name = configs.parser_name + 'v{}'.format(1 + len(os.listdir(configs.save_dir)))
-    save_dir = configs.save_dir + '/{}'.format(experiment_name)
-    
+    experiment_name = configs.parser_name + "v{}".format(
+        1 + len(os.listdir(configs.save_dir))
+    )
+    save_dir = configs.save_dir + "/{}".format(experiment_name)
+
     # Configure callbacks
-    early_stopping = EarlyStopping(monitor='em_acc', patience=5, verbose=True, mode='max')
-    checkpoint = ModelCheckpoint(dirpath=save_dir, monitor='em_acc', verbose=True, mode='max', every_n_train_steps=configs.checkpoint_steps)
+    early_stopping = EarlyStopping(
+        monitor="em_acc", patience=5, verbose=True, mode="max"
+    )
+    checkpoint = ModelCheckpoint(
+        dirpath=save_dir,
+        monitor="em_acc",
+        verbose=True,
+        mode="max",
+        every_n_train_steps=configs.checkpoint_steps,
+    )
     callbacks = [early_stopping, checkpoint]
 
     # Configure
-    logger = WandLogger(name=experiment_name, project='prompt-semantic-parsing')
-    logger.watch(model, log_model='all')
-    
+    logger = WandbLogger(
+        # name=experiment_name,
+        project="prompt-semantic-parsing",
+        log_model="all",
+    )
+
     # Create trainer
     print("Initiating trainer.")
     trainer = pl.Trainer.from_argparse_args(
         configs,
         enable_progress_bar=True,
-        check_val_every_n_epochs=configs.val_iter,
-        devices=configs.devices,
-        accelerator=configs.accelerator,
         callbacks=callbacks,
         logger=logger,
     )
@@ -131,7 +139,9 @@ def main(args):
         # Train
         print("Training.")
         trainer.fit(
-            model, dataloaders[RunMode.TRAIN.value], dataloaders[RunMode.EVAL.value]
+            model,
+            train_dataloaders=dataloaders[RunMode.TRAIN.value],
+            val_dataloaders=dataloaders[RunMode.EVAL.value],
         )
 
     if args.test:
