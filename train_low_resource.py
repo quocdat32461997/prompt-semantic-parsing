@@ -1,4 +1,5 @@
 import os
+import torch
 import argparse
 from torchtools.configs import Configs
 import pytorch_lightning as pl
@@ -13,6 +14,18 @@ from psp.dataset import (
     SMPDataLoader,
     LowResourceTOPDataset,
 )
+from typing import Dict
+
+def model_info(model: torch.nn.Module) -> None:
+    """Display total and trainable parameters of the given model. """
+    total_params = sum(
+	param.numel() for param in model.parameters()
+)
+
+    trainable_params = sum(
+	p.numel() for p in model.parameters() if p.requires_grad
+)
+    print('Total Params: {} \nTrainable Params: {}'.format(total_params, trainable_params))
 
 
 def setup(configs, **kwargs):
@@ -55,7 +68,7 @@ def setup(configs, **kwargs):
     # Built models
     print("Initiating model: {}.".format(configs.model_name))
     if configs.model_name == "Seq2SeqCopyPointer":
-        model = Seq2SeqCopyPointer(
+        core_model = Seq2SeqCopyPointer(
             pretrained=PRETRAINED_BART_MODEL,
             vocab_size=tokenizer.vocab_size,
             ontology_vocab_ids=tokenizer.ontology_vocab_ids,
@@ -71,11 +84,14 @@ def setup(configs, **kwargs):
         )
     else:
         raise ValueError("{} model is not a valid choice.".format(configs.model_name))
+    
+    # Information of mdoel
+    model_info(core_model)
 
     print("Initiating parser: {}.".format(configs.parser_name))
     if configs.parser_name == "LowResourceSemanticParser":
         model = LowResourceSemanticParser(
-            model=model,
+            model=core_model,
             lr=configs.lr,
             intent_id_list=tokenizer.intent_id_list,
             slot_id_list=tokenizer.slot_id_list,
