@@ -29,23 +29,24 @@ class SemmanticParser(pl.LightningModule):
         self.model: Module = model
         self.lr: int = lr
 
+        device = torch.cuda.current_device()
+
         # build metrics and parse_transform
         self.parse_transform: ParseTransform = ParseTransform(
-            intent_id_list, slot_id_list, ontology_id_list, vocab_size
-        )
-        self.build_metrics(num_intents=len(intent_id_list), num_slots=len(slot_id_list))
+            intent_id_list, slot_id_list, ontology_id_list, vocab_size, device=device)
+        self.build_metrics(num_intents=len(intent_id_list), num_slots=len(slot_id_list), device=device)
 
         # save hyperparameters
         self.save_hyperparameters(ignore=["model"])
 
-    def build_metrics(self, num_intents: int, num_slots: int) -> None:
+    def build_metrics(self, num_intents: int, num_slots: int, device: str='cpu') -> None:
         # Exact Match (EM) Acc.
-        self.em_acc = ExactMatch()
+        self.em_acc = ExactMatch().to(device)
 
         # Precision, Recall, and F1Score for detecting intents and slots
         self.intent_slot_metrics = IntentSlotMatch(
             num_intents=num_intents, num_slots=num_slots
-        )
+        ).to(device)
 
     def _ignore_tokens(self, tensors: Tensor):
         """
@@ -66,6 +67,7 @@ class LowResourceSemanticParser(SemmanticParser):
         slot_id_list: List[int],
         ontology_id_list: List[int],
         vocab_size: int,
+        label_smoothing: float = 0.1,
     ) -> None:
         super(LowResourceSemanticParser, self).__init__(
             model=model,
@@ -76,7 +78,9 @@ class LowResourceSemanticParser(SemmanticParser):
             vocab_size=vocab_size,
         )
 
-        self.loss_fn = torch.nn.NLLLoss(ignore_index=self.model.pad_token_id)
+        self.loss_fn = torch.nn.CrossEntropyLoss(
+            ignore_index=self.model.pad_token_id,
+            label_smoothing=label_smoothing)
 
     def compute_loss(self, outputs: Tensor, batch: ParseInputs) -> Tensor:
         """

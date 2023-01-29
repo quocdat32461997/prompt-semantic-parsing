@@ -17,7 +17,7 @@
     "min_dec_steps": 15,
     "n_best": 10,
     "max_queue_size": 1000,
-    "beam_size": 10,
+    "beam_size": 4,
     "alpha": 1.0,
     "reward": 1.0
 }
