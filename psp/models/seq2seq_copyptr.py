@@ -110,12 +110,13 @@ class Seq2SeqCopyPointer(torch.nn.Module):
 
         # Get probs to copy or generate
         vocab_probs: Tensor = self.pointer_generator(
-            source_input_ids=batch.input_ids,  # .clone(),
+            source_input_ids=batch.input_ids,
+            encoder_attn_mask=batch.attn_mask,
             encoder_hidden_states=encoder_hidden_states,
             decoder_hidden_states=decoder_hidden_states,
         )
         # Apply log over vocab_probs
-        vocab_probs = torch.log(vocab_probs)
+        #vocab_probs = torch.log(vocab_probs)
 
         return vocab_probs
 
@@ -142,7 +143,7 @@ class Seq2SeqCopyPointer(torch.nn.Module):
                 break
 
             decoder_inputs, decoder_attn_mask = self.searcher.get_decoder_inputs(
-                step=step
+                step=step, device=encoder_hidden_states.device,
             )
             decoder_hidden_states = self.decoder(
                 input_ids=decoder_inputs,
@@ -158,14 +159,16 @@ class Seq2SeqCopyPointer(torch.nn.Module):
             # [batch_size or batch_size * beam_size, 1, vocab_size]
             vocab_probs: Tensor = self.pointer_generator(
                 source_input_ids=batch.input_ids,
+                encoder_attn_mask=batch.attn_mask,
                 encoder_hidden_states=encoder_hidden_states,
                 decoder_hidden_states=decoder_hidden_states,
+                run_mode=RunMode.EVAL,
             )
-            vocab_probs = torch.log(vocab_probs)
+            #vocab_probs = torch.log(vocab_probs)
 
             # beam-search
             vocab_probs = vocab_probs.view((batch_size, -1))
             self.searcher(probs=vocab_probs)
 
         # squeeze and return final outputs
-        return self.searcher.get_final_outputs()
+        return self.searcher.get_final_outputs().to(encoder_hidden_states.device)

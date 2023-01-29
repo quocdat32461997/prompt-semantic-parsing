@@ -31,7 +31,7 @@ def pad_tensors(tensors: Tensor, batch_size: int, max_length: int, value: int):
     return torch.cat(
         [
             tensors,
-            torch.full((batch_size, max_length - tensors.shape[-1]), value),
+            torch.full((batch_size, max_length - tensors.shape[-1]), value, device=tensors.device),
         ],
         dim=-1,
     )

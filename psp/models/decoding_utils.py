@@ -3,6 +3,7 @@ import torch
 from torch import Tensor
 from typing import Dict, List, Tuple, Optional
 from heapq import heappop, heappush
+from torch.nn.utils.rnn import pad_sequence
 import copy
 
 
@@ -60,29 +61,12 @@ class BeamSearch(torch.nn.Module):
         self.pad_token_id: int = pad_token_id
         self.max_seq_len: int = max_seq_len
 
-        assert beam_size >= n_best
         assert max_queue_size > int(
             n_best * 1.5
         )  # queue_size must be larger than 1.5 of n_best
         self.n_best: int = n_best  # max number of generated sequences
         self.max_queue_size: int = max_queue_size  # max size of the buffer queue
         self.min_dec_steps: int = min_dec_steps  # min number of decodings steps
-
-        # best results
-        self.outputs: List[List[BeamSearchNode]] = []
-
-        # buffers to store temporary results
-        self.buffers: List[List[BeamSearchNode]] = []
-
-        # Tensor inputs to decoder
-        # self.decoder_inputs: Tensor = (
-        #    None  # act like default decoder inputs for data consistency
-        # )
-        # self.decoder_attn_mask: Tensor = (
-        #    None  # act like default attention masks for decoder inputs
-        # )
-        self.indices: List[int] = []
-        self.batch_size: int = 0
 
     def init_decoder_inputs(
         self,
@@ -93,15 +77,14 @@ class BeamSearch(torch.nn.Module):
         """
         Init and reset search
         """
-        gc.collect()
         if self.bos_token_tensor.device != device:
             self.bos_token_tensor.to(device)
 
-        self.batch_size = batch_size
+        self.batch_size: int = batch_size
 
-        self.outputs = [[] for _ in range(batch_size)]
-        self.buffers = copy.copy(self.outputs)
-        self.indices = list(range(batch_size))
+        self.outputs: List[List[BeamSearchNode]] = [[] for _ in range(batch_size)]
+        self.buffers: List[List[BeamSearchNode]] = copy.copy(self.outputs)
+        self.indices: List[int] = list(range(batch_size))
 
         # Start the queue
         for bid in range(batch_size):
@@ -136,47 +119,53 @@ class BeamSearch(torch.nn.Module):
         indices = []
 
         # Gather non-terminal decoder_inputs
-        decoder_input_list: List[Tensor] = []
+        decoder_input_list = []
+        decoder_attn_list = []
         for bid in self.indices:
             if len(self.buffers[bid]) <= self.max_queue_size:
-                # assert self.buffers[bid][0][-1].token_id != self.eos_token_id
                 node: BeamSearchNode = self.buffers[bid][0][-1]  # Get the best node
                 decoder_input_list.append(_build_sequence(node))
+                decoder_attn_list.append(torch.ones_like(decoder_input_list[-1]))
                 indices.append(bid)
-
-        # update decoder_inputs
         indices = torch.tensor(indices, dtype=torch.long)
-        decoder_inputs: Tensor = torch.tile(
-            self.bos_token_tensor, (self.batch_size, step)
-        )
-        decoder_inputs.index_copy_(0, indices, torch.stack(decoder_input_list))
-        # udpate decoder_attn_mask
-        decoder_attn_mask: Tensor = torch.zeros((self.batch_size, step))
-        decoder_attn_mask.index_copy(0, indices, torch.ones((len(indices), step)))
 
+        """ Prep decoder inputs """
+        # Pad sequences
+        decoder_input_list = pad_sequence(decoder_input_list, batch_first=True, padding_value=self.pad_token_id)
+        decoder_input_list = torch.concat([decoder_input_list, torch.full((decoder_input_list.shape[0], step - decoder_input_list.shape[-1]), self.pad_token_id)], dim=-1)
+        
+        # Update decoder_inputs
+        decoder_inputs: Tensor = torch.full((self.batch_size, step), self.pad_token_id, 
+        )
+        decoder_inputs.index_copy_(0, indices, decoder_input_list)
+        
+        """ Prep decoder attn mask """
+        # Pad sequences
+        decoder_attn_list: Tensor = pad_sequence(decoder_attn_list, batch_first=True) # padding by zeros by default
+        decoder_attn_list = torch.concat([decoder_attn_list, torch.zeros((decoder_attn_list.shape[0], step - decoder_attn_list.shape[-1]))], dim=-1)
+
+        # Udpate decoder_attn_mask
+        decoder_attn_mask: Tensor = torch.zeros((self.batch_size, step))
+        decoder_attn_mask.index_copy(0, indices, decoder_attn_list.to(decoder_attn_mask.dtype))
+        
         return decoder_inputs.to(device), decoder_attn_mask.to(device)
 
-    def get_final_outputs(self, device: str = "cpu") -> Tensor:
+    def get_final_outputs(self) -> Tensor:
         """
         Rebuild the final and best sequences
         Args:
             - device: where to store tensor
         Returns:
-            - _: Tensor of final output sequences
+            - outputs: Tensor of final output sequences, shape: [batch_size, padded_sequence]
         """
         output_list: List[Tensor] = []
-        max_length: int = 1
 
         # Retrieve and build sequences
         for bid, outputs in enumerate(self.outputs):
             # Sort terminal sequences by score
             outputs = sorted(outputs, key=lambda x: x[0], reverse=True)
 
-            # Find the best sequence with length >= min_dec_steps
-            while outputs and outputs[0][-1].length < self.min_dec_steps:
-                outputs.pop(0)
-
-            # if no sequence ending w/ <EOS>
+            # If no sequence ending w/ <EOS>, get from buffers
             node = outputs.pop(0)[-1] if outputs else heappop(self.buffers[bid])[-1]
             # Add <EOS> if not ending with <EOS>
             if node.token_id != self.eos_token_id:
@@ -191,18 +180,14 @@ class BeamSearch(torch.nn.Module):
             # Rebuild sequence
             output_list.append(_build_sequence(node))
 
-            # Update max_length for padding
-            max_length = max(max_length, node.length)
+        # Clean-up memory
+        del self.buffers
+        del self.outputs
+        del self.indices
+        gc.collect()
 
-        # Padding sequences
-        for idx, seq in enumerate(output_list):
-            padding = torch.full(
-                (max_length - len(seq),), self.pad_token_id, device=device
-            )
-            output_list[idx] = torch.cat([seq, padding])
-
-        return torch.stack(output_list)  # .to(device)
-
+        return pad_sequence(output_list, batch_first=True, padding_value=self.pad_token_id)
+        
     def forward(self, probs: Tensor) -> None:
         """
         Internally, select the top-k results and update indices only
@@ -239,11 +224,8 @@ class BeamSearch(torch.nn.Module):
                 # If current ndoe is eos_token_id, then move to the final output
                 if node.token_id != self.eos_token_id:
                     heappush(self.buffers[bid], (-node.score, id(node), node))
-                else:
-                    if len(self.outputs[bid]) < self.n_best:
-                        heappop(self.outputs[bid])
-                    heappush(self.outputs[bid], (-node.score, id(node), node))
-
+                elif node.length >= self.min_dec_steps and len(self.outputs[bid]) < self.n_best:
+                    self.outputs.append((node.score, node))
 
 def _build_sequence(node: BeamSearchNode, device: str = "cpu"):
     """
