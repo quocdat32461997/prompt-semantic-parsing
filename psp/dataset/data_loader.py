@@ -100,7 +100,7 @@ class SMPDataLoader(DataLoader):
         return ParseInputs(
             domain=domain_tensor,
             input_ids=tokenized_utterance["input_ids"],
-            attn_mask=tokenized_utterance["attention_mask"],
+            attn_mask=tokenized_utterance["attention_mask"].to(torch.float),
             semantic_parse_ids=tokenized_semantic_parse["input_ids"],
             semantic_parse_attn_mask=tokenized_semantic_parse["attention_mask"],
             # intent_mask=intent_mask,

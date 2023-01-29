@@ -45,6 +45,7 @@ class IntentSlotMatch(Metric):
     ):
         super(IntentSlotMatch, self).__init__()
 
+        device = torch.cuda.current_device()
         # Init states to store results of exact-ontology-match, intent-classification, and slot-classification
         for token_type in ONTOLOGY_TYPE_LIST:
             self.add_state(
@@ -67,35 +68,35 @@ class IntentSlotMatch(Metric):
         self.precision_map = {
             "ontology": Precision(
                 task="binary", num_classes=2, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
             "intents": Precision(
                 task="multiclass", num_classes=num_intents, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
             "slots": Precision(
                 task="multiclass", num_classes=num_slots, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
         }
         self.recall_map = {
             "ontology": Recall(
                 task="binary", num_classes=2, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
             "intents": Recall(
                 task="multiclass", num_classes=num_intents, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
             "slots": Recall(
                 task="multiclass", num_classes=num_slots, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
         }
         self.f1score_map = {
             "ontology": F1Score(
                 task="binary", num_classes=2, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
             "intents": F1Score(
                 task="multiclass", num_classes=num_intents, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
             "slots": F1Score(
                 task="multiclass", num_classes=num_slots, ignore_index=IGNORED_INDEX
-            ),
+            ).to(device),
         }
 
     def update(

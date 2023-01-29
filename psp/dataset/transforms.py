@@ -21,26 +21,29 @@ class ParseTransform(torch.nn.Module):
         slot_id_list: List[int],
         ontology_id_list: List[int],
         vocab_size: int,
+        device: str = 'cpu',
     ) -> None:
         super(ParseTransform, self).__init__()
-        self.vocab_tensor: Tensor = torch.full((vocab_size,), IGNORED_INDEX)
 
         # Fill in classes for intents and slots
+        self.vocab_tensor: Tensor = torch.full((vocab_size,), IGNORED_INDEX)
         self.vocab_tensor[intent_id_list] = torch.arange(len(intent_id_list))
         self.vocab_tensor[slot_id_list] = torch.arange(len(slot_id_list))
+        # Move to same device
+        self.vocab_tensor = self.vocab_tensor.to(device) 
 
         # Mappings of ontology tokens, intents, and slots
         self.ontology_maps: Dict[str, Tensor] = {
-            "ontology": torch.tensor(ontology_id_list),
-            "intents": torch.tensor(intent_id_list),
-            "slots": torch.tensor(slot_id_list),
+            "ontology": torch.tensor(ontology_id_list).to(device),
+            "intents": torch.tensor(intent_id_list).to(device),
+            "slots": torch.tensor(slot_id_list).to(device),
         }
         assert list(self.ontology_maps.keys()) == ONTOLOGY_TYPE_LIST
 
         # Mappings of oov tokens
         self.oov_token_maps: Dict[str, Tensor] = {
-            "intents": torch.tensor(len(intent_id_list) + 1),
-            "slots": torch.tensor(len(slot_id_list) + 1),
+            "intents": torch.tensor(len(intent_id_list) + 1).to(device),
+            "slots": torch.tensor(len(slot_id_list) + 1).to(device),
         }
         assert list(self.oov_token_maps.keys()) == SUB_ONTOLOGY_TYPE_LIST
 
@@ -49,11 +52,8 @@ class ParseTransform(torch.nn.Module):
     ) -> Tuple[Tensor, Tensor]:
         assert outputs.shape == targets.shape
 
-        # one_tensor = torch.ones_like(targets)
-        # zero_tensor = torch.zeros_like(targets)
-
         # Get valid tokens
-        valid_tokens: Tensor = self.ontology_maps[token_type]
+        valid_tokens: Tensor = self.ontology_maps[token_type]#.to(targets.device)
 
         # Get mask of valid tokens from outputs
         mask = torch.isin(targets, valid_tokens)
