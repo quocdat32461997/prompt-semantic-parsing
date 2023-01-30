@@ -49,6 +49,7 @@ def setup(configs, **kwargs):
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
         shuffle=True,
+        num_workers=configs.num_workers,
     )
     val_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
@@ -56,6 +57,7 @@ def setup(configs, **kwargs):
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
         run_mode=RunMode.EVAL,
+        num_workers=configs.num_workers,
     )
     test_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
@@ -63,6 +65,7 @@ def setup(configs, **kwargs):
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
         run_mode=RunMode.EVAL,
+        num_workers=configs.num_workers,
     )
 
     # Built models
@@ -81,6 +84,7 @@ def setup(configs, **kwargs):
             max_queue_size=configs.max_queue_size,
             n_best=configs.n_best,
             min_dec_steps=configs.min_dec_steps,
+            dropout=configs.dropout,
         )
     else:
         raise ValueError("{} model is not a valid choice.".format(configs.model_name))

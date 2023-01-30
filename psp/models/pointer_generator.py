@@ -49,7 +49,7 @@ class PointerGenerator(torch.nn.Module):
         input_dim: int,
         hidden_dim_list: List[int],
         num_heads: int = 12,
-        dropout: float = 0.3,
+        dropout: float = 0.1,
     ) -> None:
         """
         Args:
