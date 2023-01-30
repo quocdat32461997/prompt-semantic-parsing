@@ -2,14 +2,15 @@
     "data": "topv2",
     "model_name": "Seq2SeqCopyPointer",
     "parser_name": "LowResourceSemanticParser",
-    "max_epochs": 1,
-    "lr": 1e-3,
-    "batch_size": 4,
+    "max_epochs": 20,
+    "lr": 1e-5,
+    "batch_size": 12,
     "decay_rate": 0.9,
-    "dropout": 0.3,
+    "dropout": 0.15,
     "print_iter": 50,
     "save_iter": 200,
-    "val_check_interval": 250, 
+    "val_check_interval": 2000, 
+    "limit_val_batches": 500,
     "check_val_every_n_epoch": null,
     "checkpoint_steps": 1500,
     "devices": "auto",
@@ -19,5 +20,6 @@
     "max_queue_size": 1000,
     "beam_size": 4,
     "alpha": 1.0,
-    "reward": 1.0
+    "reward": 1.0,
+    "num_workers": 6
 }

@@ -12,7 +12,7 @@ class FFN(torch.nn.Module):
         for index, hidden_dim in enumerate(hidden_dim_list):
             self.layers.append(torch.nn.Linear(input_dim, hidden_dim))
             if index < len(hidden_dim_list) - 1:
-                self.layers.append(torch.nn.ReLU())
+                self.layers.append(torch.nn.LeakyReLU()) # ReLU not converging
                 self.layers.append(torch.nn.Dropout(dropout))
             input_dim = hidden_dim
 

@@ -22,6 +22,7 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         reward: float,
         max_dec_steps: int = None,
         max_seq_len: int = None,
+        dropout: float = 0.1,
         **kwargs,
     ):
         super(Seq2SeqCopyPointer, self).__init__()
@@ -55,6 +56,7 @@ class Seq2SeqCopyPointer(torch.nn.Module):
             ontology_vocab_ids=ontology_vocab_ids,
             input_dim=bart_model.config.d_model,
             hidden_dim_list=[512, 512, len(ontology_vocab_ids)],
+            dropout=dropout,
         )
         self.searcher: BeamSearch = BeamSearch(
             beam_size=beam_size,

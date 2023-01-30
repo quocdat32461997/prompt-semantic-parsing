@@ -25,7 +25,7 @@ class SemmanticParser(pl.LightningModule):
         ontology_id_list: List[int],
         vocab_size: int,
     ):
-        super().__init__()
+        super(SemmanticParser, self).__init__()
         self.model: Module = model
         self.lr: int = lr
 
@@ -35,6 +35,7 @@ class SemmanticParser(pl.LightningModule):
         self.parse_transform: ParseTransform = ParseTransform(
             intent_id_list, slot_id_list, ontology_id_list, vocab_size, device=device)
         self.build_metrics(num_intents=len(intent_id_list), num_slots=len(slot_id_list), device=device)
+        self.configure_optimizers()
 
         # save hyperparameters
         self.save_hyperparameters(ignore=["model"])
@@ -80,7 +81,9 @@ class LowResourceSemanticParser(SemmanticParser):
 
         self.loss_fn = torch.nn.CrossEntropyLoss(
             ignore_index=self.model.pad_token_id,
-            label_smoothing=label_smoothing)
+            label_smoothing=label_smoothing,
+            reduction='sum',
+            )
 
     def compute_loss(self, outputs: Tensor, batch: ParseInputs) -> Tensor:
         """
@@ -126,15 +129,15 @@ class LowResourceSemanticParser(SemmanticParser):
         metrics.update(self.em_acc(outputs, targets))
 
         # Ontology-levl, Intent-level and Slot-level metrics
-        for token_type in ONTOLOGY_TYPE_LIST:
-            metrics.update(
-                self.intent_slot_metrics(
-                    batch=self.parse_transform(
-                        outputs=outputs, targets=targets, token_type=token_type
-                    ),
-                    token_type=token_type,
-                ),
-            )
+        #for token_type in ONTOLOGY_TYPE_LIST:
+        #    metrics.update(
+        #        self.intent_slot_metrics(
+        #            batch=self.parse_transform(
+        #                outputs=outputs, targets=targets, token_type=token_type
+        #            ),
+        #            token_type=token_type,
+        #        ),
+        #    )
 
         # BLEU score
         return metrics
@@ -171,7 +174,7 @@ class LowResourceSemanticParser(SemmanticParser):
     def training_step(self, batch: ParseInputs, batch_idx: int):
         return self._run(batch, run_mode=RunMode.TRAIN)
 
-    def validattion_step(self, batch: ParseInputs, batch_idx: int):
+    def validation_step(self, batch: ParseInputs, batch_idx: int):
         return self._run(batch, run_mode=RunMode.EVAL)
 
     def test_step(self, batch: ParseInputs, batch_idx: int):
