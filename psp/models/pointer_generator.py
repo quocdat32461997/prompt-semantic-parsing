@@ -47,7 +47,7 @@ class PointerGenerator(torch.nn.Module):
         vocab_size: int,
         ontology_vocab_ids: List[int],
         input_dim: int,
-        hidden_dim_list: List[int],
+        gen_hidden_dim_list: List[int],
         num_heads: int = 12,
         dropout: float = 0.1,
     ) -> None:
@@ -56,7 +56,7 @@ class PointerGenerator(torch.nn.Module):
             vocab_size: number of regular words + ontology vocabs
             ontology_vocab_ids: token-ids of ontology vocabs
             input_dim: embedding dim
-            hidden_dims_list: dim-list of hidden layers (including output dimenstion but not embedding dim).
+            gen_hidden_dims_list: dim-list of hidden layers (including output dimenstion but not embedding dim).
                 The output dimension should the number of ontology tokens.
             num_heads: number of attention heads. Default to to 12 as in BART
             dropout: float. Default to 0.3 as in Low-Resource Domain Adaptation for Compositional Task-Oriented Semantic Parsing
@@ -79,7 +79,7 @@ class PointerGenerator(torch.nn.Module):
 
         # genrator
         self.generator = Generator(
-            input_dim=input_dim, hidden_dim_list=hidden_dim_list, dropout=dropout
+            input_dim=input_dim, hidden_dim_list=gen_hidden_dim_list, dropout=dropout
         )
 
     def forward(
@@ -148,16 +148,14 @@ class PointerGenerator(torch.nn.Module):
             self.ontology_vocab_ids, list(vocab_probs.shape[:2]) + [1]
         ).to(device)
 
-        if run_mode == RunMode.EVAL:
-            # [batch_size, max_seq_len, ontology_vocab_size + source_seq_len]
-            probs: Tensor = torch.concat([ontology_probs, from_source_probs], dim=-1)
+        # [batch_size, max_seq_len, ontology_vocab_size + source_seq_len]
+        probs: Tensor = torch.concat([ontology_probs, from_source_probs], dim=-1)
 
-            # Apply softmax
-            probs = F.softmax(probs, dim=-1)
+        probs = F.softmax(probs, dim=-1) if run_mode == RunMode.TRAIN else F.log_softmax(probs, dim=-1)
 
-            # Partition back to source-tokens and ontology-tokens
-            ontology_probs = probs[..., :ontology_vocab_ids.shape[-1]]
-            from_source_probs = probs[..., ontology_vocab_ids.shape[-1]:]
+        # Partition back to source-tokens and ontology-tokens
+        ontology_probs = probs[..., :ontology_vocab_ids.shape[-1]]
+        from_source_probs = probs[..., ontology_vocab_ids.shape[-1]:]
 
         vocab_probs = vocab_probs.scatter_add(
             dim=-1, index=source_input_ids, src=from_source_probs

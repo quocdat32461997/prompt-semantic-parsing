@@ -85,7 +85,19 @@ class LowResourceTOPv2Dataset(TOPv2Dataset):
             utterance=sample["utterance"],
             semantic_parse=sample["semantic_parse"],
         )
+ 
+class LowResourcePoitnerTOPv2Dataset(TOPv2Dataset):
+    def __getitem__(self, idx) -> ListInputs:
+        sample = self.data.iloc[idx]
 
+        # Encode domain
+        domain: int = TOPv2Domain[sample["domain"]].value
+
+        return ListInputs(
+            domain=domain,
+            utterance=sample["utterance"],
+            semantic_parse=sample["pointed_semantic_parse"],
+        )
 
 class PromptTOPv2Dataset(TOPv2Dataset):
     def __getitem__(self, idx) -> ListInputs:

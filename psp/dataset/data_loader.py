@@ -16,6 +16,7 @@ class SMPDataLoader(DataLoader):
         self,
         tokenizer: Tokenizer,
         dataset_path: DatasetPaths,
+        pointer_tokenizer: Tokenizer = None,
         run_mode: RunMode = RunMode.TRAIN,
         **kwargs
     ):
@@ -27,6 +28,7 @@ class SMPDataLoader(DataLoader):
         super().__init__(collate_fn=collate_fn, **kwargs)
 
         self.tokenizer: Tokenizer = tokenizer
+        self.pointer_tokenizer: Tokenizer = pointer_tokenizer
         self.run_mode: RunMode = run_mode
 
     def collate_topv2_parse_inputs(self, batch: List[ListInputs]) -> ParseInputs:
@@ -61,40 +63,14 @@ class SMPDataLoader(DataLoader):
             return_tensors="pt",
         )
 
-        # intent_mask: Optional[Tensor] = None
-        # slot_mask: Optional[Tensor] = None
-        # ontology_token_mask: Optional[Tensor] = None
-        if self.run_mode == RunMode.EVAL:
-            """
-            # Initialize dummpy tensors
-            one_tensor = torch.ones_like(tokenized_semantic_parse["input_ids"])
-            zero_tensor = torch.zeros_like(tokenized_semantic_parse["input_ids"])
-
-            intent_mask = torch.where(
-                torch.isin(
-                    tokenized_semantic_parse["input_ids"], self.tokenizer.intent_tensors
-                ),
-                one_tensor,
-                zero_tensor,
-            )
-            slot_mask = torch.where(
-                torch.isin(
-                    tokenized_semantic_parse["input_ids"], self.tokenizer.slot_tensors
-                ),
-                one_tensor,
-                zero_tensor,
-            )
-            eospan_token_mask = torch.where(
-                torch.isin(
-                    tokenized_semantic_parse["input_ids"],
-                    self.tokenizer.eospan_token_id,
-                ),
-                one_tensor,
-                zero_tensor,
-            )
-            ontology_token_mask = intent_mask + slot_mask + eospan_token_mask
-            """
-            pass
+        pointer_parse_ids: Tensor = self.pointer_tokenizer.batch_encode_plus_pointers(
+                semantic_parse_list,
+                truncation=True,
+                add_special_tokens=True,
+                max_length=self.tokenizer.max_seq_len,
+                padding="longest",
+                return_tensors="pt",
+                ) if self.pointer_tokenizer else None
 
         # Convert to Tensor and parse back into ParseInputs
         return ParseInputs(
@@ -103,7 +79,5 @@ class SMPDataLoader(DataLoader):
             attn_mask=tokenized_utterance["attention_mask"].to(torch.float),
             semantic_parse_ids=tokenized_semantic_parse["input_ids"],
             semantic_parse_attn_mask=tokenized_semantic_parse["attention_mask"],
-            # intent_mask=intent_mask,
-            # slot_mask=slot_mask,
-            # ontology_token_mask=ontology_token_mask,
+            pointer_parse_ids=pointer_parse_ids,
         )
