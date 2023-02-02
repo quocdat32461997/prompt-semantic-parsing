@@ -2,7 +2,7 @@ import pickle
 import torch
 from typing import List, Dict, Union
 from torch import Tensor
-from transformers import BartTokenizer
+from transformers import BartTokenizer, To
 from psp.constants import (
     OntologyVocabs,
     DatasetPaths,
@@ -159,3 +159,51 @@ class Tokenizer:
     @property
     def slot_id_list(self) -> List[int]:
         return list(self.slot_to_id_map.values())
+
+
+class PointerTokenizer(Tokenizer):
+    """Reset indices of ontology-tokens to 0-index"""
+    def _add_special_pointer_vocabs(self) -> None:
+        """Add the set of special pointer vocabs of MODEL_MAX_LEN pointers"""
+        # Generate set of special pointers
+        # Each pointer is formulated as @ptr# that # is the index
+        pointer_set = ["@ptr{}".format(x) for x in range(self.tokenizer.model_max_length)]
+
+        # Add pointer tokens to tokenizer
+        new_added_pointer_token_num: int = self.tokenizer.add_tokens(
+            pointer_set, sepcial_tokens=True
+        )
+        print("Added {} poitner tokens.".format(new_added_pointer_token_num))
+
+        # Get token-id map of pointers
+        pointer_id_list: List[int] = self.tokenizer.encode(self.pointer_set)[1:-1]
+        self.pointer_to_id_map: Dict[str, int] = {}
+        self.id_to_pointer_map: Dict[int, str] = {}
+
+        for ptr, id in zip(pointer_set, pointer_id_list):
+            self.pointer_to_id_map[ptr] = id
+            self.id_to_pointer_map[id] = ptr
+
+    @property
+    def map_pointer_to_id(self, ptr: str) -> int:
+        return self.pointer_to_id_map[ptr]
+
+    @property
+    def map_id_to_poitner(self, id: int) -> str:
+        return self.id_to_pointer_map[id]
+    
+    @property
+    def pointer_list(self) -> List[str]:
+        return list(self.pointer_to_id_map.keys())
+
+    @property
+    def pointer_set_size(self) -> int:
+        return len(self.pointer_to_id_map)
+
+    @property
+    def output_vocab_size(self) -> int:
+        return self.ontology_vocab_size + self.pointer_set_size
+
+    def batch_encode_plus_pointers(self, batch_text: List[str], **kwargs):
+        # TODO: encode pointers by 0-index
+        return super().batch_encode_plus(batch_text, **kwargs)

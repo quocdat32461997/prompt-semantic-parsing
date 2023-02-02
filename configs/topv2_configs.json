@@ -1,9 +1,12 @@
 {
     "data": "topv2",
+    "data_loader": "SMPDataLoader",
+    "tokenizer": "Tokenizer",
+    "use_pointer": true,
     "model_name": "Seq2SeqCopyPointer",
     "parser_name": "LowResourceSemanticParser",
     "max_epochs": 20,
-    "lr": 1e-5,
+    "lr": 5e-3,
     "batch_size": 12,
     "decay_rate": 0.9,
     "dropout": 0.15,

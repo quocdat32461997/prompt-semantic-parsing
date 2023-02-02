@@ -7,9 +7,10 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 from psp.constants import PRETRAINED_BART_MODEL, DatasetPaths, RunMode
-from psp.models import Seq2SeqCopyPointer, LowResourceSemanticParser
+from psp.models import Seq2SeqVocabCopyPointer, Seq2SeqIndexCopyPointer, LowResourceSemanticParser
 from psp.dataset import (
     Tokenizer,
+    PointerTokenizer,
     LowResourceTOPv2Dataset,
     SMPDataLoader,
     LowResourceTOPDataset,
@@ -40,11 +41,15 @@ def setup(configs, **kwargs):
     # Inint tokenizer
     print("Initiating tokenizer.")
     tokenizer = Tokenizer(pretrained=PRETRAINED_BART_MODEL, dataset_path=dataset_path)
+    pointer_tokenizer = None
+    if configs.use_pointer:
+        pointer_tokenizer = PointerTokenizer(pretrained=PRETRAINED_BART_MODEL, dataset_path=dataset_path)
 
     # Creata dataloaders
     print("Initiating data loaders.")
     train_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
+        pointer_tokenizer=pointer_tokenizer,
         dataset=dataset(bucket=RunMode.TRAIN),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
@@ -53,6 +58,7 @@ def setup(configs, **kwargs):
     )
     val_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
+        pointer_tokenizer=pointer_tokenizer,
         dataset=dataset(bucket=RunMode.EVAL),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
@@ -61,6 +67,7 @@ def setup(configs, **kwargs):
     )
     test_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
+        pointer_tokenizer=pointer_tokenizer,
         dataset=dataset(bucket=RunMode.TEST),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
@@ -70,10 +77,27 @@ def setup(configs, **kwargs):
 
     # Built models
     print("Initiating model: {}.".format(configs.model_name))
-    if configs.model_name == "Seq2SeqCopyPointer":
-        core_model = Seq2SeqCopyPointer(
+    if configs.model_name == "Seq2SeqVocabCopyPointer":
+        core_model = Seq2SeqVocabCopyPointer(
             pretrained=PRETRAINED_BART_MODEL,
             vocab_size=tokenizer.vocab_size,
+            ontology_vocab_ids=tokenizer.ontology_vocab_ids,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            beam_size=configs.beam_size,
+            alpha=configs.alpha,
+            reward=configs.reward,
+            max_queue_size=configs.max_queue_size,
+            n_best=configs.n_best,
+            min_dec_steps=configs.min_dec_steps,
+            dropout=configs.dropout,
+        )
+    elif configs.model_name == "Seq2SeqIndexCopyPointer":
+        core_model = Seq2SeqIndexCopyPointer(
+            pretrained=PRETRAINED_BART_MODEL,
+            vocab_size=tokenizer.vocab_size,
+            output_vocab_size=tokenizer.output_vocab_size,
             ontology_vocab_ids=tokenizer.ontology_vocab_ids,
             bos_token_id=tokenizer.bos_token_id,
             eos_token_id=tokenizer.eos_token_id,

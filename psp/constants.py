@@ -52,9 +52,8 @@ class ParseInputs(NamedTuple):
     attn_mask: Tensor
     semantic_parse_ids: Tensor
     semantic_parse_attn_mask: Tensor
-    intent_mask: Optional[Tensor] = None
-    slot_mask: Optional[Tensor] = None
-    ontology_token_mask: Optional[Tensor] = None
+    pointer_parse_ids: Tensor = None
+
 
 
 class ParseOutputs(NamedTuple):

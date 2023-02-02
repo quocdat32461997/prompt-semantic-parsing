@@ -58,33 +58,6 @@ class SemmanticParser(pl.LightningModule):
             torch.full(tensors.shape, IGNORED_INDEX),
         )
 
-
-class LowResourceSemanticParser(SemmanticParser):
-    def __init__(
-        self,
-        model: Module,
-        lr: float,
-        intent_id_list: List[int],
-        slot_id_list: List[int],
-        ontology_id_list: List[int],
-        vocab_size: int,
-        label_smoothing: float = 0.1,
-    ) -> None:
-        super(LowResourceSemanticParser, self).__init__(
-            model=model,
-            lr=lr,
-            intent_id_list=intent_id_list,
-            slot_id_list=slot_id_list,
-            ontology_id_list=ontology_id_list,
-            vocab_size=vocab_size,
-        )
-
-        self.loss_fn = torch.nn.CrossEntropyLoss(
-            ignore_index=self.model.pad_token_id,
-            label_smoothing=label_smoothing,
-            reduction='sum',
-            )
-
     def compute_loss(self, outputs: Tensor, batch: ParseInputs) -> Tensor:
         """
         Args:
@@ -93,16 +66,16 @@ class LowResourceSemanticParser(SemmanticParser):
                 semantic_parse_ids: [batch_size, seq_len]
         """
         # Skip <BOS> in references
-        semantic_parse: Tensor = batch.semantic_parse_ids[:, 1:]
+        targets: Tensor = batch.semantic_parse_ids[:, 1:]
 
         # Outputs and gold references must match the sequence length
-        assert outputs.shape[1] == semantic_parse.shape[-1]
+        assert outputs.shape[1] == targets.shape[-1]
 
         # reshape outputs to [batch_size, vocab_size, seq_len]
         outputs = torch.reshape(
             outputs, (outputs.shape[0], outputs.shape[2], outputs.shape[1])
         )
-        return self.loss_fn(outputs, semantic_parse)
+        return self.loss_fn(outputs, targets)
 
     def compute_metrics(self, outputs: Tensor, batch: ParseInputs) -> Dict[str, Tensor]:
         """
@@ -142,13 +115,6 @@ class LowResourceSemanticParser(SemmanticParser):
         # BLEU score
         return metrics
 
-    def configure_optimizers(self):
-        optimizer = Adam(
-            self.model.parameters(), lr=self.lr
-        )  # MAMLOptimizer(self.model.parameters(), self.lr)
-
-        return optimizer
-
     def _run(self, batch: ParseInputs, run_mode: RunMode) -> Tensor:
 
         # Forward
@@ -179,3 +145,80 @@ class LowResourceSemanticParser(SemmanticParser):
 
     def test_step(self, batch: ParseInputs, batch_idx: int):
         return self._run(batch, run_mode=RunMode.TEST)
+
+    def configure_optimizers(self):
+        optimizer = Adam(
+            self.model.parameters(), lr=self.lr
+        )  # MAMLOptimizer(self.model.parameters(), self.lr)
+
+        return optimizer
+
+class LowResourceSemanticParser(SemmanticParser):
+    def __init__(
+        self,
+        model: Module,
+        lr: float,
+        intent_id_list: List[int],
+        slot_id_list: List[int],
+        ontology_id_list: List[int],
+        vocab_size: int,
+        label_smoothing: float = 0.1,
+    ) -> None:
+        super(LowResourceSemanticParser, self).__init__(
+            model=model,
+            lr=lr,
+            intent_id_list=intent_id_list,
+            slot_id_list=slot_id_list,
+            ontology_id_list=ontology_id_list,
+            vocab_size=vocab_size,
+        )
+
+        self.loss_fn = torch.nn.NLLLoss(
+            ignore_index=self.model.pad_token_id,
+            reduction='sum'
+        )
+
+    def compute_loss(self, outputs: Tensor, batch: ParseInputs) -> Tensor:
+        """
+        Args:
+            outputs: Tensor outputs in shape [batch_size, seq_len - 1, vocab_size] that without <BOS> at the beggining
+            batch: ParseInputs object to store semantic_parse_ids (aka gold references)
+                pointer_parse_ids: [batch_size, seq_len]
+        """
+        # Skip <BOS> in references
+        targets: Tensor = batch.pointer_parse_ids[:, 1:]
+
+        # Outputs and gold references must match the sequence length
+        assert outputs.shape[1] == targets.shape[-1]
+
+        # reshape outputs to [batch_size, vocab_size, seq_len]
+        outputs = torch.reshape(
+            outputs, (outputs.shape[0], outputs.shape[2], outputs.shape[1])
+        )
+        return self.loss_fn(outputs, targets)
+
+    def compute_metrics(self, outputs: Tensor, batch: ParseInputs) -> Dict[str, Tensor]:
+        """
+        Args:
+            - outputs: Tensor of shape [batch_size, seq_len_A]
+            - batch: ParseInputs object to store gold references (semantic_parse_ids)
+                pointer_parse_ids: Tensor of shape [batch_size, seq_len_B]
+            **NOTE**: seq_len_A may not equal to seq_len_B
+        """
+        # Reterieve outputs and gold references
+        targets: Tensor = batch.poitner_parse_ids
+
+        # Padding if unequal length
+        max_length: int = max(targets.shape[-1], outputs.shape[-1])
+        outputs = pad_tensors(
+            outputs, len(outputs), max_length, value=self.model.pad_token_id
+        )
+        targets = pad_tensors(
+            targets, len(outputs), max_length, value=self.model.pad_token_id
+        )
+
+        metrics: Dict[str, Tensor] = {}
+        # Exact Match Acc.
+        metrics.update(self.em_acc(outputs, targets))
+
+        return metrics
