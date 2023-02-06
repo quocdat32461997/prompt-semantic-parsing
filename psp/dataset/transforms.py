@@ -9,7 +9,6 @@ from psp.constants import (
     SUB_ONTOLOGY_TYPE_LIST,
 )
 
-
 class ParseTransform(torch.nn.Module):
     """
     Map tokens to corresponding classes of intents, slots, and the closing ontology token ]
