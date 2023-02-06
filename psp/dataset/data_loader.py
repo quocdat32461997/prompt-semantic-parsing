@@ -16,7 +16,7 @@ class SMPDataLoader(DataLoader):
         self,
         tokenizer: Tokenizer,
         dataset_path: DatasetPaths,
-        use_pointer: bool = False,
+        pointer_tokenizer: Tokenizer = None,
         run_mode: RunMode = RunMode.TRAIN,
         **kwargs
     ):
@@ -28,7 +28,7 @@ class SMPDataLoader(DataLoader):
         super().__init__(collate_fn=collate_fn, **kwargs)
 
         self.tokenizer: Tokenizer = tokenizer
-        self.use_pointer: bool = use_pointer
+        self.pointer_tokenizer: Tokenizer = pointer_tokenizer
         self.run_mode: RunMode = run_mode
 
     def collate_topv2_parse_inputs(self, batch: List[ListInputs]) -> ParseInputs:
@@ -63,14 +63,14 @@ class SMPDataLoader(DataLoader):
             return_tensors="pt",
         )
 
-        pointer_parse_ids = self.tokenizer.batch_encode_vocabs_to_pointers(
+        pointer_parse_ids: Tensor = self.pointer_tokenizer.batch_encode_plus_pointers(
                 semantic_parse_list,
                 truncation=True,
                 add_special_tokens=True,
                 max_length=self.tokenizer.max_seq_len,
                 padding="longest",
                 return_tensors="pt",
-                )["input_ids"] if self.use_pointer else None
+                ) if self.pointer_tokenizer else None
 
         # Convert to Tensor and parse back into ParseInputs
         return ParseInputs(
