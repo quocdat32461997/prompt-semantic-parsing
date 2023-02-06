@@ -2,7 +2,7 @@ import pickle
 import torch
 from typing import List, Dict, Union
 from torch import Tensor
-from transformers import BartTokenizer, To
+from transformers import BartTokenizer
 from psp.constants import (
     OntologyVocabs,
     DatasetPaths,
@@ -184,6 +184,12 @@ class PointerTokenizer(Tokenizer):
             self.pointer_to_id_map[ptr] = id
             self.id_to_pointer_map[id] = ptr
 
+        # declare pointer-transform
+        self.pointers_to_vocabs: Tensor = torch.tensor(pointer_id_list + self.ontology_id_list + [self.eos_token_id, self.bos_token_id, self.pad_token_id, self.tokenizer.unk_token_id])
+        
+        self.vocabs_to_pointers: Tensor = torch.full((self.vocab_size,), fill_value=-1)
+        self.vocabs_to_pointers[self.pointers_to_vocabs] = torch.arange(len(self.pointers_to_vocabs))
+
     @property
     def map_pointer_to_id(self, ptr: str) -> int:
         return self.pointer_to_id_map[ptr]
@@ -202,8 +208,20 @@ class PointerTokenizer(Tokenizer):
 
     @property
     def output_vocab_size(self) -> int:
-        return self.ontology_vocab_size + self.pointer_set_size
+        # 4 to compensate for special tokens: <BOS>, <PAD>, <UNK>, and <EOS>
+        return self.ontology_vocab_size + self.pointer_set_size + 4
 
-    def batch_encode_plus_pointers(self, batch_text: List[str], **kwargs):
-        # TODO: encode pointers by 0-index
-        return super().batch_encode_plus(batch_text, **kwargs)
+    def transform(self, inputs: Tensor) -> Tensor:
+        return self.vocabs_to_pointers[inputs]
+
+    def reverse_transform(self, inputs: Tensor) -> Tensor:
+        return self.pointers_to_vocabs[inputs]
+
+    def batch_encode_vocabs_to_pointers(self, sequences: List[str], **kwargs):
+        pointer_parse = super().batch_encode_plus(sequences, **kwargs, return_tensor="pt")
+        pointer_parse["input_ids"] = self.transform(pointer_parse["input_ids"])
+
+        return pointer_parse
+
+    def batch_decode_pointers_to_vocabs(self, inputs: Tensor) -> Tensor:
+        return self.reverse_transform(inputs)
