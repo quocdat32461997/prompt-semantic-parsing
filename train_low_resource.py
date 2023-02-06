@@ -40,39 +40,39 @@ def setup(configs, **kwargs):
         raise ValueError("{} dataset is not a valid choie.".format(configs.data))
     # Inint tokenizer
     print("Initiating tokenizer.")
-    tokenizer_class = Tokenizer
+    tokenizer = Tokenizer(pretrained=PRETRAINED_BART_MODEL, dataset_path=dataset_path)
+    pointer_tokenizer = None
     if configs.use_pointer:
-        tokenizer_class = PointerTokenizer
-    tokenizer = tokenizer_class(pretrained=PRETRAINED_BART_MODEL, dataset_path=dataset_path)
+        pointer_tokenizer = PointerTokenizer(pretrained=PRETRAINED_BART_MODEL, dataset_path=dataset_path)
 
     # Creata dataloaders
     print("Initiating data loaders.")
     train_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
+        pointer_tokenizer=pointer_tokenizer,
         dataset=dataset(bucket=RunMode.TRAIN),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
         shuffle=True,
         num_workers=configs.num_workers,
-        use_pointer=configs.use_pointer,
     )
     val_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
+        pointer_tokenizer=pointer_tokenizer,
         dataset=dataset(bucket=RunMode.EVAL),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
         run_mode=RunMode.EVAL,
         num_workers=configs.num_workers,
-        use_pointer=configs.use_pointer,
     )
     test_dataloader = SMPDataLoader(
         tokenizer=tokenizer,
+        pointer_tokenizer=pointer_tokenizer,
         dataset=dataset(bucket=RunMode.TEST),
         dataset_path=dataset_path,
         batch_size=configs.batch_size,
         run_mode=RunMode.EVAL,
         num_workers=configs.num_workers,
-        use_pointer=configs.use_pointer,
     )
 
     # Built models
