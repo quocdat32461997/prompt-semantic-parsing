@@ -7,85 +7,109 @@ import pandas as pd
 import argparse
 
 from psp.dataset.data_utils import read_top_dataset
-from psp.constants import ONTOLOGY_SCOPE_PATTERN, OntologyVocabs, DatasetPaths, PRETRAINED_BART_MODEL
-from psp.dataset import PointerTokenizer
+from psp.constants import ONTOLOGY_SCOPE_PATTERN, OntologyVocabs, DatasetPaths, PRETRAINED_BART_MODEL, MULTI_WHITESPACE_PATTERN, SINGLE_SPACE
+from psp.dataset import PointerTokenizer, Tokenizer
 
 def init_tokenizer(dataset_path: str):
     return PointerTokenizer(pretrained=PRETRAINED_BART_MODEL, dataset_path=dataset_path)
 
-def _parse_pointers(utter_seq: List[int], parse_seq: List[int], ontology_vocabs: List[int]) -> List[int]:
+def parse_pointers(tokenizer, df) -> Dict[str, List[int]]:
+
+    parse_seq: List[int] = []
+    utter_seq: List[int] = []
+    pointer_seq: List[int] = []
+    utterance: str = ""
+    last: int = 0
+    last_seq: int = 0
     
-    utter_idx, parse_idx = 0, 0
+    matches = re.finditer(ONTOLOGY_SCOPE_PATTERN, df.semantic_parse)
+    for match in matches:
+        start, end = match.span()
+    
+        # Update utterance with prepending text
+        utterance += " " + df.semantic_parse[last:start]
+        utterance = re.sub(MULTI_WHITESPACE_PATTERN, SINGLE_SPACE, utterance).strip()
 
-    while parse_idx < len(parse_seq) and utter_idx < len(utter_seq):
-        # if the current parse-token is one of ontologies, skip
-        if parse_seq[parse_idx] in ontology_vocabs:
-            parse_idx += 1
-            continue 
+        # Get token-ids
+        ontology_token_id = tokenizer(df.semantic_parse[start:end])["input_ids"][1]
+        token_ids = tokenizer(utterance)["input_ids"][1:-1]
 
-        # find the next sequence of non-ontology tokens in parse-seq
-        end_parse_idx = parse_idx + 1
-        while end_parse_idx < len(parse_seq) and parse_seq[end_parse_idx] not in ontology_vocabs:
-            end_parse_idx += 1
+        # Update utterance seq
+        utter_seq.extend(token_ids)
 
-        # find the first match of parse-seq in utter-seq
-        while utter_idx < len(utter_seq) and utter_seq[utter_idx : utter_idx + end_parse_idx - parse_idx] != parse_seq[parse_idx:end_parse_idx]:
-            utter_idx += 1
+        # Update parse_seq
+        parse_seq.extend(token_ids[last_seq:])
+        parse_seq.append(ontology_token_id)
 
-        # record matches
-        if utter_seq[utter_idx : utter_idx + end_parse_idx - parse_idx] != parse_seq[parse_idx:end_parse_idx]:
-            while parse_idx < end_parse_idx:
-                parse_seq[parse_idx] = None # assign @ptr#
+        # Update pointer_seq
+        pointer_seq.extend([tokenizer("@ptr{}".format(idx))["input_ids"][1] for idx in range(last_seq, len(token_ids))])
+        pointer_seq.append(ontology_token_id)
 
-    return parse_seq
+        last_seq = len(token_ids)
+        last = end
 
-def parse_pointers(tokenizer, df):
-    # Get pointeres
-    pointer_seq_list: List[List[int]] = []
-    for utter, parse in zip(df['utterance'], df['semantic_parse']):
-        utter_tokens = tokenizer(utter, truncation=True, add_special_tokens=True)["input_ids"]
-        parse_tokens = tokenizer(parse, truncation=True, add_special_tokens=True)["input_ids"]
-            
-        # Generate pointers
-        pointer_seq_list.append(_parse_pointers(utter_tokens, parse_tokens, ontology_vocabs=tokenizer.ontology_vocab_ids))
-    return pointer_seq_list
+    # Add <BOS> and <EOS>
+    utter_seq = [tokenizer.tokenizer.bos_token_id] + utter_seq + [tokenizer.tokenizer.eos_token_id]
+    parse_seq = [tokenizer.tokenizer.bos_token_id] + parse_seq + [tokenizer.tokenizer.eos_token_id]
+    pointer_seq = [tokenizer.tokenizer.bos_token_id] + pointer_seq + [tokenizer.tokenizer.eos_token_id]
 
-def get_pointers_from_top_dataset(tokenizer):
-    for path in ["train.tsv", "eval.tsv", "test.tsv"]:
+    return {"utterance": utter_seq, "semantic_parsae": parse_seq, "pointer_parse": pointer_seq}
+
+def get_pointers_from_top_dataset(tokenizer: Tokenizer) -> None:
+    for set in ["train", "eval", "test"]:
         df: pd.DataFrame = read_top_dataset(
-            os.path.join(DatasetPaths.TOP.value, path)
+                os.path.join(DatasetPaths.TOPv2.value, set + ".tsv")
         )
-        
+            
         # Generate pointer_parse
-        df['pointer_parse'] = parse_pointers(tokenizer=tokenizer, df=df)
+        processed_data = df.apply(lambda x: parse_pointers(tokenizer, x), axis=1)
 
-        # Save df
-        df.to_csv(os.path.join(DatasetPaths.TOP.value, "processed_" + path))
+        # Save data
+        with open(os.path.join(DatasetPaths.TOPv2.value, "processed_{}.pkl".format(set)), 'wb') as file:
+            pickle.dump(processed_data, file)
 
-def get_pointers_from_topv2_dataset(tokenizer):
-    for set in ["train.tsv", "eval.tsv", "test.tsv"]:
+def get_pointers_from_topv2_dataset(tokenizer: Tokenizer) -> None:
+    for set in ["train", "eval", "test"]:
+        print("Processing {} set".format(set))
+        processed_data = []
         for domain in ["alarm", "event", "messaging", "music", "navigation", "reminder", "weather", "timer"]:    
-            path = domain + "_" + set
-            df: pd.DataFrame = read_top_dataset(
-                os.path.join(DatasetPaths.TOPv2.value, path)
+            path = domain + "_" + set + ".tsv"
+            df: pd.DataFrame = pd.read_csv(
+                os.path.join(DatasetPaths.TOPv2.value, path), sep="\t",
             )
             
             # Generate pointer_parse
-            df['pointer_parse'] = parse_pointers(tokenizer=tokenizer, df=df)
+            processed_data.append(df.apply(lambda x: parse_pointers(tokenizer, x), axis=1))
 
-            # Save df
-            df.to_csv(os.path.join(DatasetPaths.TOP.value, "processed_" + path))
+        # Save data
+        with open(os.path.join(DatasetPaths.TOPv2.value, "processed_{}.pkl".format(set)), 'wb') as file:
+            pickle.dump(processed_data, file)
 
 def main(args):
     # Get Ontology vocabs from  atasets: TOP, TOPV2
     if args.dataset == "top":
-        tokenizer = init_tokenizer(DatasetPaths.TOP)
-        get_pointers_from_top_dataset(tokenizer)
+        data_path = DatasetPaths.TOP
+        func = get_pointers_from_top_dataset
     elif args.dataset == "topv2":
-        tokenizer = init_tokenizer(DatasetPaths.TOPv2)
-        get_pointers_from_topv2_dataset(tokenizer)
+        data_path = DatasetPaths.TOPv2
+        func = get_pointers_from_topv2_dataset
     else:
         raise ValueError("{} is a not valid choice.".format(args.dataset))
+
+    # Init tokenizer
+    print("Initializing tokenizer")
+    tokenizer = init_tokenizer(data_path)
+
+    # Process dataset
+    print("Processing data")
+    func(tokenizer)
+
+    # Save tokenizer
+    print("Saving tokenizer.")
+    data_path = os.path.join(data_path.value, "tokenizer")
+    if not os.path.isdir(data_path):
+        os.mkdir(data_path)
+    tokenizer.save_pretrained(data_path)
 
 if __name__ == "__main__":
     # Init parser

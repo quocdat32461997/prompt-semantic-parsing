@@ -13,7 +13,7 @@ from psp.constants import (
 class Tokenizer:
     """] is the special token to indicate the enclosure of a span (either by intent or slot)"""
 
-    def __init__(self, pretrained: str, dataset_path: str):
+    def __init__(self, pretrained: str, dataset_path: DatasetPaths):
         # Init tokenizer and add ontology vocabs
         self.tokenizer: BartTokenizer = BartTokenizer.from_pretrained(pretrained)
         # Read onotlogy vocabs
@@ -88,6 +88,9 @@ class Tokenizer:
     ) -> Union[List[int], List[List[int]]]:
         return self.tokenizer(inputs, **kwargs)
 
+    def decode(self, *args, **kwargs):
+        return self.tokenizer.decode(*args, **kwargs)
+
     @property
     def max_seq_len(self) -> int:
         return self.tokenizer.model_max_length
@@ -160,9 +163,18 @@ class Tokenizer:
     def slot_id_list(self) -> List[int]:
         return list(self.slot_to_id_map.values())
 
+    def save_pretrained(self, *args, **kwargs) -> None:
+        self.tokenizer.save_pretrained(*args, **kwargs)
+
 
 class PointerTokenizer(Tokenizer):
     """Reset indices of ontology-tokens to 0-index"""
+    def __init__(self, pretrained: str, dataset_path: DatasetPaths):
+        super(PointerTokenizer, self).__init__(pretrained=pretrained, dataset_path=dataset_path)
+
+        # add special pointer vocabs
+        self._add_special_pointer_vocabs()
+
     def _add_special_pointer_vocabs(self) -> None:
         """Add the set of special pointer vocabs of MODEL_MAX_LEN pointers"""
         # Generate set of special pointers
@@ -171,12 +183,12 @@ class PointerTokenizer(Tokenizer):
 
         # Add pointer tokens to tokenizer
         new_added_pointer_token_num: int = self.tokenizer.add_tokens(
-            pointer_set, sepcial_tokens=True
+            pointer_set, special_tokens=True
         )
         print("Added {} poitner tokens.".format(new_added_pointer_token_num))
 
         # Get token-id map of pointers
-        pointer_id_list: List[int] = self.tokenizer.encode(self.pointer_set)[1:-1]
+        pointer_id_list: List[int] = self.tokenizer.encode(pointer_set)[1:-1]
         self.pointer_to_id_map: Dict[str, int] = {}
         self.id_to_pointer_map: Dict[int, str] = {}
 
@@ -184,17 +196,15 @@ class PointerTokenizer(Tokenizer):
             self.pointer_to_id_map[ptr] = id
             self.id_to_pointer_map[id] = ptr
 
-        # declare pointer-transform
+        # declare pointer-transform (for classification)
         self.pointers_to_vocabs: Tensor = torch.tensor(pointer_id_list + self.ontology_id_list + [self.eos_token_id, self.bos_token_id, self.pad_token_id, self.tokenizer.unk_token_id])
         
         self.vocabs_to_pointers: Tensor = torch.full((self.vocab_size,), fill_value=-1)
         self.vocabs_to_pointers[self.pointers_to_vocabs] = torch.arange(len(self.pointers_to_vocabs))
 
-    @property
     def map_pointer_to_id(self, ptr: str) -> int:
         return self.pointer_to_id_map[ptr]
 
-    @property
     def map_id_to_poitner(self, id: int) -> str:
         return self.id_to_pointer_map[id]
     
