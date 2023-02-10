@@ -21,7 +21,7 @@ def parse_pointers(tokenizer, df) -> Dict[str, List[int]]:
     utterance: str = ""
     last: int = 0
     last_seq: int = 0
-    
+
     matches = re.finditer(ONTOLOGY_SCOPE_PATTERN, df.semantic_parse)
     for match in matches:
         start, end = match.span()
@@ -53,7 +53,7 @@ def parse_pointers(tokenizer, df) -> Dict[str, List[int]]:
     parse_seq = [tokenizer.tokenizer.bos_token_id] + parse_seq + [tokenizer.tokenizer.eos_token_id]
     pointer_seq = [tokenizer.tokenizer.bos_token_id] + pointer_seq + [tokenizer.tokenizer.eos_token_id]
 
-    return {"utterance": utter_seq, "semantic_parsae": parse_seq, "pointer_parse": pointer_seq}
+    return {"domain": df.domain, "utterance": utter_seq, "semantic_parsae": parse_seq, "pointer_parse": pointer_seq}
 
 def get_pointers_from_top_dataset(tokenizer: Tokenizer) -> None:
     for set in ["train", "eval", "test"]:
