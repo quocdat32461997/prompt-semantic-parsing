@@ -65,6 +65,10 @@ PRETRAINED_BART_MODEL: str = "facebook/bart-base"
 
 ONTOLOGY_SCOPE_PATTERN: str = "\[IN:\w+|\[SL:\w+|\]"
 ONTOLOGY_PATTERN: str = "\[IN:\w+|\[SL:\w+"
+TIME_SPACED_PATTERN: str = "\d{1,2}\s*(\:|\.)?\s*\d{0,2}\s*(([aA]|[pP])[mM]?)?(?!\w+)" # time format ending with space or non-alphanumeric
+SHORT_FORM_SPACED_PATTERN : str = "\w+\s+'([rR][eE]|[sS]|[dD])?(?!\w+)"
+MULTI_WHITESPACE_PATTERN: str = "\s+"
+SINGLE_SPACE: str = " "
 
 ONTOLOGY_TYPE_LIST: List[str] = ["ontology", "intents", "slots"]
 SUB_ONTOLOGY_TYPE_LIST: List[str] = ["intents", "slots"]
