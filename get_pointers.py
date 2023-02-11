@@ -1,13 +1,13 @@
 import re
 import os
+import torch
 import pickle
-from collections import defaultdict
-from typing import Dict, List, Union
+from typing import Dict, List
 import pandas as pd
 import argparse
 
 from psp.dataset.data_utils import read_top_dataset
-from psp.constants import ONTOLOGY_SCOPE_PATTERN, OntologyVocabs, DatasetPaths, PRETRAINED_BART_MODEL, MULTI_WHITESPACE_PATTERN, SINGLE_SPACE
+from psp.constants import ONTOLOGY_SCOPE_PATTERN, DatasetPaths, PRETRAINED_BART_MODEL, MULTI_WHITESPACE_PATTERN, SINGLE_SPACE
 from psp.dataset import PointerTokenizer, Tokenizer
 
 def init_tokenizer(dataset_path: str):
@@ -53,7 +53,7 @@ def parse_pointers(tokenizer, df) -> Dict[str, List[int]]:
     parse_seq = [tokenizer.tokenizer.bos_token_id] + parse_seq + [tokenizer.tokenizer.eos_token_id]
     pointer_seq = [tokenizer.tokenizer.bos_token_id] + pointer_seq + [tokenizer.tokenizer.eos_token_id]
 
-    return {"domain": df.domain, "utterance": utter_seq, "semantic_parsae": parse_seq, "pointer_parse": pointer_seq}
+    return {"domain": df.domain, "utterance": torch.tensor(utter_seq), "semantic_parsae": torch.tensor(parse_seq), "pointer_parse": torch.tensor(pointer_seq)}
 
 def get_pointers_from_top_dataset(tokenizer: Tokenizer) -> None:
     for set in ["train", "eval", "test"]:
