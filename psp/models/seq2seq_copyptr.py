@@ -40,9 +40,9 @@ class Seq2SeqCopyPointer(torch.nn.Module):
         self.bos_token_id: int = bos_token_id
 
         self.max_dec_steps: int = (
-            max_dec_steps if max_dec_steps else self.model_config.max_position_embeddings
+            max_dec_steps if max_dec_steps else self.model.config.max_position_embeddings
         )
-        assert self.max_dec_steps <= self.model_config.max_position_embeddings
+        assert self.max_dec_steps <= self.model.config.max_position_embeddings
 
         self.encoder = bart_model.encoder
         self.decoder = bart_model.decoder
@@ -93,7 +93,7 @@ class Seq2SeqVocabCopyPointer(Seq2SeqCopyPointer):
         dropout: float = 0.1,
         **kwargs,
     ):
-        super(Seq2SeqVocabCopyPointer, self).__init__(pretrained, vocab_size, bos_token_id, eos_token_id, pad_token_id, beam_size, alpha, reward, max_dec_steps, dropout, **kwargs)
+        super(Seq2SeqVocabCopyPointer, self).__init__(pretrained, vocab_size, bos_token_id, eos_token_id, pad_token_id, beam_size, alpha, reward, max_dec_steps, dropout)
         
         self.pointer_generator: PointerGenerator = PointerGenerator(
             vocab_size=vocab_size,
@@ -208,7 +208,7 @@ class Seq2SeqIndexCopyPointer(Seq2SeqCopyPointer):
         dropout: float = 0.1,
         **kwargs,
     ):
-        super(Seq2SeqIndexCopyPointer, self).__init__(pretrained, vocab_size, bos_token_id, eos_token_id, pad_token_id, beam_size, alpha, reward, max_dec_steps, dropout, **kwargs)
+        super(Seq2SeqIndexCopyPointer, self).__init__(pretrained, vocab_size, bos_token_id, eos_token_id, pad_token_id, beam_size, alpha, reward, max_dec_steps, dropout)
 
         self.pointer_generator: PointerGenerator = PointerGenerator(
             vocab_size=output_vocab_size,

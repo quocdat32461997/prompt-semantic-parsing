@@ -88,32 +88,6 @@ class Tokenizer:
     ) -> Union[List[int], List[List[int]]]:
         return self.tokenizer(inputs, **kwargs)
 
-    """
-    @property
-    def bos_token_id(self) -> int:
-        return self.tokenizer.bos_token_id
-
-    @property
-    def bos_token(self) -> str:
-        return self.tokenizer.bos_token
-    
-    @property
-    def eos_token(self) -> str:
-        return self.tokenizer.eos_token
-
-    @property
-    def eos_token_id(self) -> int:
-        return self.tokenizer.eos_token_id
-    
-    @property
-    def pad_token(self) -> str:
-        return self.tokenizer.pad_token
-    
-    @property
-    def pad_token_id(self) -> int:
-        return self.tokenizer.pad_token_id
-    """
-    
     def decode(self, *args, **kwargs):
         return self.tokenizer.decode(*args, **kwargs)
 

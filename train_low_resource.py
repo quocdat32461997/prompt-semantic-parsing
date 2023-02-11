@@ -8,8 +8,13 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks import ModelCheckpoint
 from psp.constants import PRETRAINED_BART_MODEL, DatasetPaths, RunMode
 from psp.models import Seq2SeqVocabCopyPointer, Seq2SeqIndexCopyPointer, LowResourceSemanticParser
-
-from psp.dataset import SemanticParseDataModule
+from psp.dataset import (
+    Tokenizer,
+    PointerTokenizer,
+    LowResourceTOPv2Dataset,
+    SMPDataLoader,
+    LowResourceTOPDataset,
+)
 from typing import Dict
 
 def model_info(model: torch.nn.Module) -> None:
@@ -25,16 +30,49 @@ def model_info(model: torch.nn.Module) -> None:
 
 
 def setup(configs, **kwargs):
-    
-    # Initiate data-module
-    print("Initializing data-module.")
-    data_module = SemanticParseDataModule(
-        dataset_name=configs.data,
+    if configs.data == "topv2":
+        dataset_path = DatasetPaths.TOPv2
+        dataset = LowResourceTOPv2Dataset
+    elif configs.data == "top":
+        dataset_path = DatasetPaths.TOP
+        dataset = LowResourceTOPDataset
+    else:
+        raise ValueError("{} dataset is not a valid choie.".format(configs.data))
+    # Inint tokenizer
+    print("Initiating tokenizer.")
+    tokenizer_class = Tokenizer
+    if configs.use_pointer:
+        tokenizer_class = PointerTokenizer
+    tokenizer = tokenizer_class(pretrained=PRETRAINED_BART_MODEL, dataset_path=dataset_path)
+
+    # Creata dataloaders
+    print("Initiating data loaders.")
+    train_dataloader = SMPDataLoader(
+        tokenizer=tokenizer,
+        dataset=dataset(bucket=RunMode.TRAIN),
+        dataset_path=dataset_path,
         batch_size=configs.batch_size,
+        shuffle=True,
         num_workers=configs.num_workers,
-        pretrained=configs.pretrained_tokenizer,
-        use_processed_data=configs.use_processed_data,
-        use_pointer_data=configs.use_pointer_data,
+        use_pointer=configs.use_pointer,
+    )
+    val_dataloader = SMPDataLoader(
+        tokenizer=tokenizer,
+        dataset=dataset(bucket=RunMode.EVAL),
+        dataset_path=dataset_path,
+        batch_size=configs.batch_size,
+        run_mode=RunMode.EVAL,
+        num_workers=configs.num_workers,
+        use_pointer=configs.use_pointer,
+    )
+    test_dataloader = SMPDataLoader(
+        tokenizer=tokenizer,
+        dataset=dataset(bucket=RunMode.TEST),
+        dataset_path=dataset_path,
+        batch_size=configs.batch_size,
+        run_mode=RunMode.EVAL,
+        num_workers=configs.num_workers,
+        use_pointer=configs.use_pointer,
     )
 
     # Built models
@@ -42,11 +80,11 @@ def setup(configs, **kwargs):
     if configs.model_name == "Seq2SeqVocabCopyPointer":
         core_model = Seq2SeqVocabCopyPointer(
             pretrained=PRETRAINED_BART_MODEL,
-            vocab_size=data_module.transform.tokenizer.vocab_size,
-            ontology_vocab_ids=data_module.transform.tokenizer.ontology_vocab_ids,
-            bos_token_id=data_module.transform.tokenizer.bos_token_id,
-            eos_token_id=data_module.transform.tokenizer.eos_token_id,
-            pad_token_id=data_module.transform.tokenizer.pad_token_id,
+            vocab_size=tokenizer.vocab_size,
+            ontology_vocab_ids=tokenizer.ontology_vocab_ids,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
             beam_size=configs.beam_size,
             alpha=configs.alpha,
             reward=configs.reward,
@@ -58,12 +96,12 @@ def setup(configs, **kwargs):
     elif configs.model_name == "Seq2SeqIndexCopyPointer":
         core_model = Seq2SeqIndexCopyPointer(
             pretrained=PRETRAINED_BART_MODEL,
-            vocab_size=data_module.transform.tokenizer.vocab_size,
-            output_vocab_size=data_module.transform.tokenizer.output_vocab_size,
-            ontology_vocab_ids=data_module.transform.tokenizer.ontology_vocab_ids,
-            bos_token_id=data_module.transform.tokenizer.bos_token_id,
-            eos_token_id=data_module.transform.tokenizer.eos_token_id,
-            pad_token_id=data_module.transform.tokenizer.pad_token_id,
+            vocab_size=tokenizer.vocab_size,
+            output_vocab_size=tokenizer.output_vocab_size,
+            ontology_vocab_ids=tokenizer.ontology_vocab_ids,
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
             beam_size=configs.beam_size,
             alpha=configs.alpha,
             reward=configs.reward,
@@ -83,15 +121,19 @@ def setup(configs, **kwargs):
         model = LowResourceSemanticParser(
             model=core_model,
             lr=configs.lr,
-            intent_id_list=data_module.transform.tokenizer.intent_id_list,
-            slot_id_list=data_module.transform.tokenizer.slot_id_list,
-            ontology_id_list=data_module.transform.tokenizer.ontology_vocab_ids,
-            vocab_size=data_module.transform.tokenizer.vocab_size,
+            intent_id_list=tokenizer.intent_id_list,
+            slot_id_list=tokenizer.slot_id_list,
+            ontology_id_list=tokenizer.ontology_vocab_ids,
+            vocab_size=tokenizer.vocab_size,
         )
     else:
         raise ValueError("{} parser is not a valid choice.".format(configs.parser_name))
 
-    return model, data_module
+    return model, {
+        "train": train_dataloader,
+        "eval": val_dataloader,
+        "test": test_dataloader,
+    }
 
 
 def main(args):
@@ -100,7 +142,7 @@ def main(args):
     configs: Configs = Configs(path=args.path_to_config)
 
     # Create model
-    model, data_module = setup(configs=configs)
+    model, dataloaders = setup(configs=configs)
 
     # Configure experiment  name
     experiment_name = configs.parser_name + "v{}".format(
@@ -142,13 +184,14 @@ def main(args):
         print("Training.")
         trainer.fit(
             model,
-            data_module,
+            train_dataloaders=dataloaders[RunMode.TRAIN.value],
+            val_dataloaders=dataloaders[RunMode.EVAL.value],
         )
 
     if args.test:
         # Test
         print("Testing.")
-        trainer.test(model, data_module)
+        trainer.test(model, dataloaders=dataloaders[RunMode.TEST.value])
 
 
 if __name__ == "__main__":

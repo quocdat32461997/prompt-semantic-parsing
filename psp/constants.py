@@ -1,4 +1,4 @@
-from typing import NamedTuple, Optional, Union, List, Dict
+from typing import NamedTuple, Optional, Union, List
 from enum import Enum
 from torch import Tensor
 
@@ -42,9 +42,8 @@ class TOPv2Domain(Enum):
 
 class ListInputs(NamedTuple):
     domain: int
-    utterance: Union[str, Tensor]
-    semantic_parse: Union[str, Tensor]
-    pointer_parse: Union[str, Tensor] = None
+    utterance: str
+    semantic_parse: str
 
 
 class ParseInputs(NamedTuple):
@@ -53,6 +52,8 @@ class ParseInputs(NamedTuple):
     attn_mask: Tensor
     semantic_parse_ids: Tensor
     semantic_parse_attn_mask: Tensor
+    pointer_parse_ids: Tensor = None
+
 
 
 class ParseOutputs(NamedTuple):
