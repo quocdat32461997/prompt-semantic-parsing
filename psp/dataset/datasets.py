@@ -70,7 +70,7 @@ class LowResourceTOPDataset(TOPDataset):
             domain=TOPDomain.none,
             utterance=sample["utterance"],
             semantic_parse=sample["semantic_parse"],
-            pointer_parse=sample["pointer_parse"],
+            pointer_parse=sample["pointer_parse"] if "pointer_parse" in sample.columns else None,
         )
 
 
@@ -85,7 +85,7 @@ class LowResourceTOPv2Dataset(TOPv2Dataset):
             domain=domain,
             utterance=sample["utterance"],
             semantic_parse=sample["semantic_parse"],
-            pointer_parse=sample["pointer_parse"],
+            pointer_parse=sample["pointer_parse"] if "pointer_parse" in sample.columns else None,
         )
 
 class PromptTOPv2Dataset(TOPv2Dataset):

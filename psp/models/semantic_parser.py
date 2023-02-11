@@ -10,7 +10,7 @@ from psp.constants import ParseInputs, RunMode, IGNORED_INDEX, ONTOLOGY_TYPE_LIS
 from psp.models.optimizers import MAMLOptimizer
 from psp.models.metrics import ExactMatch, IntentSlotMatch
 from psp.models.model_utils import pad_tensors
-from psp.dataset.transforms import ParseTransform
+from psp.transforms.parse_transform import ParseTransform
 
 
 class SemmanticParser(pl.LightningModule):
