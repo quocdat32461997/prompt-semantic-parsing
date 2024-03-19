@@ -1,6 +1,8 @@
 # prompt-semantic-parsing
 Prompting for Task-Oriented Semantic Parsing
-
+* This repo was inspired by the hierarchical design of several pre-ChatGPT chatbots: identify intent A -> semantic parsing for intent A. The design, IMO, accelerates inference and scalability to adapt new domains (few-shot learning).
+* The repo idea was to combine prompting + BART to reduce training effort on new domains. In the ideal settings, new domains require updating corresponding sets of intents-slots only. The decoder will fill the following prompt “Given text, the intent is [IN: X]. The slots are [SL: Y phrase [SL: Z phrase ] ].
+  
 ## Datasets
 * SNIPS
 * TOP
