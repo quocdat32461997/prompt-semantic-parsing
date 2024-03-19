@@ -8,6 +8,14 @@ Prompting for Task-Oriented Semantic Parsing
 * Overnight
 
 ## Training
+
+Retrieve ontologies and pointers
+```
+python3 get_ontology.py
+python3 get_poitners.py
+```
+
+Start training low_resource experiments
 ```
 python3 train_low_resource.py --path-to-config configs/path_to_training_configs_per_dataset.json
 ```
