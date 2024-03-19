@@ -1,11 +1,10 @@
 {
     "data": "topv2",
-    "pretrained_tokenizer": null, 
-    "//1": "datasets/TOPv2_Dataset/tokenizer",
+    "pretrained_tokenizer": "datasets/TOPv2_Dataset/tokenizer",
     "use_pointer_data": false,
     "model_name": "Seq2SeqVocabCopyPointer",
     "parser_name": "LowResourceSemanticParser",
-    "use_processed_data": false,
+    "use_processed_data": true,
     "max_epochs": 20,
     "lr": 5e-3,
     "batch_size": 12,

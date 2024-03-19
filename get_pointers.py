@@ -27,7 +27,7 @@ def parse_pointers(tokenizer, df) -> Dict[str, List[int]]:
     
         # Update utterance with prepending text
         utterance += " " + df.semantic_parse[last:start]
-        utterance = re.sub(MULTI_WHITESPACE_PATTERN, SINGLE_SPACE, utterance).strip()
+        utterance = utterance.strip()#re.sub(MULTI_WHITESPACE_PATTERN, SINGLE_SPACE, utterance).strip()
 
         # Get token-ids
         ontology_token_id = tokenizer(df.semantic_parse[start:end])["input_ids"][1]
@@ -52,20 +52,24 @@ def parse_pointers(tokenizer, df) -> Dict[str, List[int]]:
     parse_seq = [tokenizer.tokenizer.bos_token_id] + parse_seq + [tokenizer.tokenizer.eos_token_id]
     pointer_seq = [tokenizer.tokenizer.bos_token_id] + pointer_seq + [tokenizer.tokenizer.eos_token_id]
 
-    return {"domain": df.domain, "utterance": torch.tensor(utter_seq), "semantic_parsae": torch.tensor(parse_seq), "pointer_parse": torch.tensor(pointer_seq)}
+    return {"domain": df.domain, 
+            "utterance": utter_seq, 
+            "semantic_parse": parse_seq, 
+            "pointer_parse": pointer_seq
+            }
 
 def get_pointers_from_top_dataset(tokenizer: Tokenizer) -> None:
     for set in ["train", "eval", "test"]:
         df: pd.DataFrame = read_top_dataset(
-                os.path.join(DatasetPaths.TOPv2.value, set + ".tsv")
+                os.path.join(DatasetPaths.TOP.value, set + ".tsv")
         )
             
         # Generate pointer_parse
         processed_data = df.apply(lambda x: parse_pointers(tokenizer, x), axis=1)
 
         # Save data
-        with open(os.path.join(DatasetPaths.TOPv2.value, "processed_{}.pkl".format(set)), 'wb') as file:
-            pickle.dump(processed_data, file)
+        processed_data = pd.DataFrame.from_dict(processed_data)
+        processed_data.to_csv(os.path.join(DatasetPaths.TOP.value, "processed_{}.tsv".format(set)))
 
 def get_pointers_from_topv2_dataset(tokenizer: Tokenizer) -> None:
     for set in ["train", "eval", "test"]:
@@ -78,12 +82,14 @@ def get_pointers_from_topv2_dataset(tokenizer: Tokenizer) -> None:
             )
             
             # Generate pointer_parse
-            processed_data.append(df.apply(lambda x: parse_pointers(tokenizer, x), axis=1))
+            processed_data.extend(df.apply(lambda x: parse_pointers(tokenizer, x), axis=1))
 
         # Save data
         with open(os.path.join(DatasetPaths.TOPv2.value, "processed_{}.pkl".format(set)), 'wb') as file:
             pickle.dump(processed_data, file)
-
+        #processed_data = pd.DataFrame.from_dict(processed_data)
+        #processed_data.to_csv(os.path.join(DatasetPaths.TOPv2.value, "processed_{}.tsv".format(set)))
+        
 def main(args):
     # Get Ontology vocabs from  atasets: TOP, TOPV2
     if args.dataset == "top":
