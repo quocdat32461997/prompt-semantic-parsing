@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from psp.constants import RunMode
-from psp.models.model_utils import FFN
+from psp.models.base_models import FFN
 
 class Generator(torch.nn.Module):
     def __init__(self, input_dim: int, hidden_dim_list: List[int], dropout: float):
@@ -103,6 +103,10 @@ class PointerGenerator(torch.nn.Module):
         if not device:
             device = source_input_ids.device
         
+        # Get [batch_size, max_seq_len]
+        source_seq_len = source_input_ids.shape[1]
+        batch_size, output_seq_len = list(decoder_hidden_states.shape[:2])
+
         # Generate probs to generate ontology tokens
         # [batch_size, max_seq_len or 1, ontology_vocab_size]
         ontology_probs: Tensor = self.generator(decoder_hidden_states)
@@ -134,28 +138,28 @@ class PointerGenerator(torch.nn.Module):
         # Parse into full vocabs
         # [batch_size, max_seq_len or 1, vocab_size]
         vocab_probs: Tensor = torch.zeros(
-            list(from_source_probs.shape[:2]) + [self.vocab_size],
+            [batch_size, output_seq_len, self.vocab_size],
             dtype=copy_probs.dtype
         ).to(device)
 
         # Get indices to fill token-logits into vocab_probs
         # [batch_size, max_seq_len, source_seq_len]
         source_input_ids = source_input_ids.unsqueeze(1)
-        source_input_ids = torch.tile(source_input_ids, [1, copy_probs.shape[1], 1])
+        source_input_ids = torch.tile(source_input_ids, [1, source_seq_len, 1])
         
         # [batch_size, max_seq_len or 1, ontology_vocab]
         ontology_vocab_ids: Tensor = torch.tile(
-            self.ontology_vocab_ids, list(vocab_probs.shape[:2]) + [1]
+            self.ontology_vocab_ids, [batch_size, output_seq_len, 1]
         ).to(device)
 
         # [batch_size, max_seq_len, ontology_vocab_size + source_seq_len]
-        probs: Tensor = torch.concat([ontology_probs, from_source_probs], dim=-1)
+        #probs: Tensor = torch.concat([ontology_probs, from_source_probs], dim=-1)
 
-        probs = F.softmax(probs, dim=-1) if run_mode == RunMode.TRAIN else F.log_softmax(probs, dim=-1)
+        #probs = F.log_softmax(probs, dim=-1) if run_mode == RunMode.TRAIN else F.softmax(probs, dim=-1)
 
         # Partition back to source-tokens and ontology-tokens
-        ontology_probs = probs[..., :ontology_vocab_ids.shape[-1]]
-        from_source_probs = probs[..., ontology_vocab_ids.shape[-1]:]
+        #ontology_probs = probs[..., :ontology_vocab_ids.shape[-1]]
+        #from_source_probs = probs[..., ontology_vocab_ids.shape[-1]:]
 
         vocab_probs = vocab_probs.scatter_add(
             dim=-1, index=source_input_ids, src=from_source_probs
@@ -164,4 +168,7 @@ class PointerGenerator(torch.nn.Module):
             dim=-1, index=ontology_vocab_ids, src=ontology_probs
         )
     
+        # Softmax over vocab-probs
+        vocab_probs = F.log_softmax(vocab_probs, dim=-1) if run_mode == RunMode.TRAIN else F.softmax(vocab_probs, dim=-1)
+
         return vocab_probs

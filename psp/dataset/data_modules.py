@@ -11,7 +11,6 @@ from psp.constants import (
     DatasetPaths,
     PRETRAINED_BART_MODEL
 )
-from psp.dataset.tokenizer import Tokenizer, PointerTokenizer
 from psp.dataset.datasets import LowResourceTOPDataset, LowResourceTOPv2Dataset
 from psp.transforms.input_transform import TokenTransform, InputTransform, TextTransform
 class SemanticParseDataModule(pl.LightningDataModule):
@@ -55,17 +54,24 @@ class SemanticParseDataModule(pl.LightningDataModule):
             )
         self.batch_size: int = batch_size
         self.num_workers: int = num_workers
+        self.use_processed_data: bool = use_processed_data
+
     def setup(self, stage: str):
         if stage == "fit":
-            self.train_set = self.dataset(bucket=RunMode.TRAIN)
-            self.val_set = self.dataset(bucket=RunMode.EVAL)
+            self.train_set = self.dataset(bucket=RunMode.TRAIN, use_processed_data=self.use_processed_data)
+            self.val_set = self.dataset(bucket=RunMode.EVAL, use_processed_data=self.use_processed_data)
         
         if stage == "test":
-            self.test_set = self.dataset(bucket=RunMode.TEST)
+            self.test_set = self.dataset(bucket=RunMode.TEST, use_processed_data=self.use_processed_data)
+    
+    def _collate(self, batch: List[ListInputs]) -> ParseInputs:
+        return self.transform(batch)
+
     def train_dataloader(self):
-        return DataLoader(self.train_set, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.train_set, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self._collate)
     
     def val_dataloader(self):
-        return DataLoader(self.val_set, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.val_set, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self._collate)
+    
     def test_dataloader(self):
-        return DataLoader(self.test_set, batch_size=self.batch_size, num_workers=self.num_workers)
+        return DataLoader(self.test_set, batch_size=self.batch_size, num_workers=self.num_workers, collate_fn=self._collate)

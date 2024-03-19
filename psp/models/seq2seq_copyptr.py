@@ -6,6 +6,7 @@ from typing import List
 from psp.models.pointer_generator import PointerGenerator
 from psp.constants import ParseInputs, RunMode
 from psp.models.decoding_utils import BeamSearch
+from psp.models.model_utils import get_arange_matrix
 
 class Seq2SeqCopyPointer(torch.nn.Module):
     def __init__(
@@ -132,9 +133,6 @@ class Seq2SeqVocabCopyPointer(Seq2SeqCopyPointer):
             encoder_hidden_states=encoder_hidden_states,
             decoder_hidden_states=decoder_hidden_states,
         )
-        # Apply log over vocab_probs
-        #vocab_probs = torch.log(vocab_probs)
-
         return vocab_probs
 
     def _generate(self, batch: ParseInputs) -> Tensor:
@@ -181,7 +179,6 @@ class Seq2SeqVocabCopyPointer(Seq2SeqCopyPointer):
                 decoder_hidden_states=decoder_hidden_states,
                 run_mode=RunMode.EVAL,
             )
-            #vocab_probs = torch.log(vocab_probs)
 
             # beam-search
             vocab_probs = vocab_probs.view((batch_size, -1))
@@ -218,12 +215,6 @@ class Seq2SeqIndexCopyPointer(Seq2SeqCopyPointer):
             dropout=dropout,
         )
 
-    def _init_arange_matrix(self, shape: torch.Size) -> Tensor:
-        assert shape[0] > 0 and shape[1] > 0
-        matrix: Tensor = torch.arange(shape[1])
-        matrix = torch.tile(matrix, [shape[0], 1])
-        return matrix
-
     def _forward(self, batch: ParseInputs) -> Tensor:
         """Supports token_ids only."""
         # Encode inputs
@@ -248,14 +239,11 @@ class Seq2SeqIndexCopyPointer(Seq2SeqCopyPointer):
 
         # Get probs to copy or generate
         vocab_probs: Tensor = self.pointer_generator(
-            source_input_ids=self._init_arange_matrix(batch.input_ids.shape).to(encoder_hidden_states.device),
+            source_input_ids=get_arange_matrix(batch.input_ids.shape).to(encoder_hidden_states.device),
             encoder_attn_mask=batch.attn_mask,
             encoder_hidden_states=encoder_hidden_states,
             decoder_hidden_states=decoder_hidden_states,
         )
-        # Apply log over vocab_probs
-        #vocab_probs = torch.log(vocab_probs)
-
         return vocab_probs
 
     def _generate(self, batch: ParseInputs) -> Tensor:
@@ -296,13 +284,12 @@ class Seq2SeqIndexCopyPointer(Seq2SeqCopyPointer):
             # Generate probs to copy from source tokens or generate ontology tokens
             # [batch_size or batch_size * beam_size, 1, vocab_size]
             vocab_probs: Tensor = self.pointer_generator(
-                source_input_ids=self._init_arange_matrix(batch.input_ids.shape).to(encoder_hidden_states.device),
+                source_input_ids=get_arange_matrix(batch.input_ids.shape).to(encoder_hidden_states.device),
                 encoder_attn_mask=batch.attn_mask,
                 encoder_hidden_states=encoder_hidden_states,
                 decoder_hidden_states=decoder_hidden_states,
                 run_mode=RunMode.EVAL,
             )
-            #vocab_probs = torch.log(vocab_probs)
 
             # beam-search
             vocab_probs = vocab_probs.view((batch_size, -1))

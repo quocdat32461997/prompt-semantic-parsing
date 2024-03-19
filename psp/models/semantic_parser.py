@@ -49,15 +49,6 @@ class SemmanticParser(pl.LightningModule):
             num_intents=num_intents, num_slots=num_slots
         ).to(device)
 
-    def _ignore_tokens(self, tensors: Tensor):
-        """
-        Ignores <BOS> and <PAD> for fair evaluation"""
-        return torch.where(
-            (tensors != self.model.pad_token_id) | (tensors != self.model.bos_token_id),
-            tensors,
-            torch.full(tensors.shape, IGNORED_INDEX),
-        )
-
     def compute_loss(self, outputs: Tensor, batch: ParseInputs) -> Tensor:
         """
         Args:
@@ -183,10 +174,10 @@ class LowResourceSemanticParser(SemmanticParser):
         Args:
             outputs: Tensor outputs in shape [batch_size, seq_len - 1, vocab_size] that without <BOS> at the beggining
             batch: ParseInputs object to store semantic_parse_ids (aka gold references)
-                pointer_parse_ids: [batch_size, seq_len]
+                semantic_parse_ids: [batch_size, seq_len]
         """
         # Skip <BOS> in references
-        targets: Tensor = batch.pointer_parse_ids[:, 1:]
+        targets: Tensor = batch.semantic_parse_ids[:, 1:]
 
         # Outputs and gold references must match the sequence length
         assert outputs.shape[1] == targets.shape[-1]
@@ -201,12 +192,12 @@ class LowResourceSemanticParser(SemmanticParser):
         """
         Args:
             - outputs: Tensor of shape [batch_size, seq_len_A]
-            - batch: ParseInputs object to store gold references (semantic_parse_ids)
-                pointer_parse_ids: Tensor of shape [batch_size, seq_len_B]
+            - batch: ParseInputs object to store gold references (aka semantic_parse_ids)
+                semantic_parse_ids: Tensor of shape [batch_size, seq_len_B]
             **NOTE**: seq_len_A may not equal to seq_len_B
         """
         # Reterieve outputs and gold references
-        targets: Tensor = batch.poitner_parse_ids
+        targets: Tensor = batch.semantic_parse_ids
 
         # Padding if unequal length
         max_length: int = max(targets.shape[-1], outputs.shape[-1])

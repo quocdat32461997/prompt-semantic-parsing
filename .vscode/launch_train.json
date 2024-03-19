@@ -8,9 +8,9 @@
             "name": "Python: Current File",
             "type": "python",
             "request": "launch",
-            "program": "/home/ericngo/Desktop/prompt-semantic-parsing/get_pointers.py",
+            "program": "train_low_resource.py",
             "console": "internalConsole",
-            "args": ["--dataset", "topv2"],
+            "args": ["--train", "--test", "--path-to-config", "configs/topv2_configs.json"],
             "justMyCode": true
         }
     ]

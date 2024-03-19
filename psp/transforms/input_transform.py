@@ -3,7 +3,7 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from psp.dataset.tokenizer import Tokenizer, PointerTokenizer
 from psp.constants import DatasetPaths, ListInputs, ParseInputs
-from typing import Dict, List
+from typing import Dict, List, Union
 
 class InputTransform:
     def __init__(self, pretrained: str, dataset_path: DatasetPaths) -> None:
@@ -26,14 +26,17 @@ class TokenTransform(InputTransform):
             # Preserve <eos> token_id
             outputs[..., -1] = torch.where(outputs[..., -1] == self.tokenizer.eos_token_id, outputs, self.tokenizer.pad_token_id)
         return outputs
+    
     def _get_attention_mask(self, inputs: Tensor) -> Tensor:
         return torch.where(inputs != self.tokenizer.pad_token_id, 1, 0)
+    
     def __call__(self, batch: List[ListInputs]) -> ParseInputs:
         """Custom collate function to batch ParseInputs"""
+        
         domain_list: List[int] = []
-        utterance_list: List[str] = []
-        semantic_parse_list: List[str] = []
-        pointer_parse_list: List[str] = []
+        utterance_list: Union[List[str], List[Tensor]] = []
+        semantic_parse_list: Union[List[str], List[Tensor]] = []
+        pointer_parse_list: Union[List[str], List[Tensor]] = []
         
         # Get inptus
         for inputs in batch:
@@ -42,15 +45,18 @@ class TokenTransform(InputTransform):
             semantic_parse_list.append(inputs.semantic_parse)
             if self.use_pointer_data and inputs.pointer_parse:
                 pointer_parse_list.append(inputs.pointer_parse)
-        assert self.use_pointer_data and pointer_parse_list
+        if self.use_pointer_data and not pointer_parse_list:
+            raise ValueError("use_pointer_data={} must accompany with valid and non-empty pointer_parse_list".format(self.use_pointer_data))
         domain_tensor: Tensor = torch.tensor(domain_list)
         
         # Pad utterance-, semantic- or pointer-parse
         token_tensor: Tensor = self._pad_sequence(utterance_list)
         semantic_parse_tensor: Tensor = self._pad_sequence(pointer_parse_list) if self.use_pointer_data and pointer_parse_list else self._pad_sequence(semantic_parse_list)
+        
         # Get attention mask
         attn_mask = self._get_attention_mask(token_tensor)
         semantic_parse_attn_mask = self._get_attention_mask(semantic_parse_tensor)
+
         return ParseInputs(
             domain=domain_tensor,
             input_ids=token_tensor,
@@ -64,17 +70,21 @@ class TextTransform(InputTransform):
     def __init__(self, pretrained: str, dataset_path: DatasetPaths) -> None:
         super(TextTransform, self).__init__(pretrained, dataset_path)
         self.tokenizer: Tokenizer = PointerTokenizer(pretrained=pretrained, dataset_path=dataset_path)
+    
     def __call__(self, batch: List[ListInputs]) -> ParseInputs:
         """Custom collate function to batch ParseInputs"""
+        
         domain_list: List[int] = []
         utterance_list: List[str] = []
         semantic_parse_list: List[str] = []
+        
         # Get inptus
         for inputs in batch:
             domain_list.append(inputs.domain)
             utterance_list.append(inputs.utterance)
             semantic_parse_list.append(inputs.semantic_parse)
         domain_tensor: Tensor = torch.tensor(domain_list)
+
         # Tokenize utterance and semantic_parse
         tokenized_utterance = self.tokenizer.batch_encode_plus(
                 utterance_list,
@@ -92,11 +102,11 @@ class TextTransform(InputTransform):
                 padding="longest",
                 return_tensors="pt",
             )
+
         return ParseInputs(
             domain=domain_tensor,
             input_ids=tokenized_utterance["input_ids"],
             attn_mask=tokenized_utterance["attention_mask"].to(torch.float),
             semantic_parse_ids=tokenized_semantic_parse["input_ids"],
             semantic_parse_attn_mask=tokenized_semantic_parse["attention_mask"],
-            pointer_parse_ids=None
         )
